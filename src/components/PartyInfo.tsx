@@ -1,10 +1,10 @@
-import { Clock, MapPin, Calendar } from "lucide-react";
+import { Clock, MapPin, Calendar, PawPrint } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 export const PartyInfo = () => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto px-4">
-      <Card className="p-6 text-center bg-party-pink/30 hover:scale-105 transition-transform">
+      <Card className="p-6 text-center bg-party-blue/30 hover:scale-105 transition-transform">
         <Calendar className="w-8 h-8 mx-auto mb-4 text-party-purple" />
         <h3 className="font-bold mb-2">Data</h3>
         <p>15 de Junho de 2024</p>
@@ -20,6 +20,12 @@ export const PartyInfo = () => {
         <MapPin className="w-8 h-8 mx-auto mb-4 text-party-purple" />
         <h3 className="font-bold mb-2">Local</h3>
         <p>Buffet Alegria<br />Rua das Flores, 123</p>
+      </Card>
+
+      <Card className="col-span-1 md:col-span-3 p-6 text-center bg-party-pink/30 hover:scale-105 transition-transform">
+        <PawPrint className="w-8 h-8 mx-auto mb-4 text-party-purple" />
+        <h3 className="font-bold mb-2">Tema</h3>
+        <p>Patrulha Canina</p>
       </Card>
     </div>
   );
