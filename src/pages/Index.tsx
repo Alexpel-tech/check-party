@@ -1,6 +1,7 @@
 import { PartyHeader } from "@/components/PartyHeader";
 import { ConfirmationForm } from "@/components/ConfirmationForm";
 import { PartyInfo } from "@/components/PartyInfo";
+import { PhotoGallery } from "@/components/PhotoGallery";
 import { PrivacyNotice } from "@/components/PrivacyNotice";
 
 const Index = () => {
@@ -11,6 +12,7 @@ const Index = () => {
         <main className="mt-12 space-y-16">
           <ConfirmationForm />
           <PartyInfo />
+          <PhotoGallery />
         </main>
         <PrivacyNotice />
       </div>
