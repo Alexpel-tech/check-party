@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 export const PartyHeader = () => {
   return (
     <header className="text-center py-8 px-4">
-      <div className="w-full h-48 md:h-64 mb-8 relative overflow-hidden rounded-lg bg-gradient-to-r from-party-blue via-party-purple to-party-pink">
+      <div className="w-full h-[400px] md:h-[500px] mb-8 relative overflow-hidden rounded-lg bg-gradient-to-r from-party-blue via-party-purple to-party-pink">
         <div className="absolute inset-0 bg-opacity-20 bg-white flex items-center justify-center">
           <div className="grid grid-cols-3 gap-4 w-full h-full opacity-10">
             {Array.from({ length: 9 }).map((_, i) => (
@@ -12,11 +12,20 @@ export const PartyHeader = () => {
             ))}
           </div>
         </div>
-        <div className="absolute inset-0 flex items-center justify-center flex-col">
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-2">
-            Festa do Bento!
-          </h1>
-          <p className="text-xl text-white">Patrulha Canina</p>
+        <div className="absolute inset-0 flex items-center justify-center gap-8 flex-col md:flex-row px-4">
+          <div className="w-48 h-48 md:w-64 md:h-64 rounded-full overflow-hidden border-4 border-white shadow-xl">
+            <img 
+              src="/lovable-uploads/5bff3ad7-0eab-41bb-afdd-cb7eb62d5d96.png"
+              alt="Foto do aniversariante"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="text-center md:text-left">
+            <h1 className="text-4xl md:text-6xl font-bold text-white mb-2">
+              Festa do Bento!
+            </h1>
+            <p className="text-xl text-white">Patrulha Canina</p>
+          </div>
         </div>
       </div>
 
