@@ -1,11 +1,18 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { PartyHeader } from "@/components/PartyHeader";
+import { ConfirmationForm } from "@/components/ConfirmationForm";
+import { PartyInfo } from "@/components/PartyInfo";
+import { PrivacyNotice } from "@/components/PrivacyNotice";
 
 const Index = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
+    <div className="min-h-screen gradient-bg">
+      <div className="container mx-auto py-8 px-4">
+        <PartyHeader />
+        <main className="mt-12 space-y-16">
+          <ConfirmationForm />
+          <PartyInfo />
+        </main>
+        <PrivacyNotice />
       </div>
     </div>
   );
