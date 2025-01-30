@@ -1,4 +1,4 @@
-import { toast } from "@/hooks/use-toast";
+import { getTwilioCredentials } from './twilioConfig';
 
 const PARENT_NUMBERS = [
   { name: 'Alex', number: '+5521981452612' },
@@ -13,6 +13,12 @@ interface SMSData {
 }
 
 export const sendConfirmationSMS = async (data: SMSData) => {
+  const credentials = getTwilioCredentials();
+  
+  if (!credentials) {
+    throw new Error('Credenciais do Twilio não configuradas');
+  }
+
   try {
     // Enviar SMS para os pais
     for (const parent of PARENT_NUMBERS) {
@@ -20,6 +26,9 @@ export const sendConfirmationSMS = async (data: SMSData) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Twilio-Account-Sid': credentials.accountSid,
+          'X-Twilio-Auth-Token': credentials.authToken,
+          'X-Twilio-Phone-Number': credentials.phoneNumber
         },
         body: JSON.stringify({
           to: parent.number,
@@ -33,23 +42,17 @@ export const sendConfirmationSMS = async (data: SMSData) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Twilio-Account-Sid': credentials.accountSid,
+        'X-Twilio-Auth-Token': credentials.authToken,
+        'X-Twilio-Phone-Number': credentials.phoneNumber
       },
       body: JSON.stringify({
         to: data.phone,
         message: `Olá ${data.parentName}! Sua presença na festa do Bento foi confirmada!\nData: 15 de Junho de 2024\nHorário: 15h às 19h\nLocal: Buffet Alegria - Rua das Flores, 123\nAguardamos você e seus ${data.guests} acompanhantes!`
       })
     });
-
-    toast({
-      title: "SMS enviados com sucesso!",
-      description: "Confirmações enviadas para todos os números.",
-    });
   } catch (error) {
     console.error('Erro ao enviar SMS:', error);
-    toast({
-      title: "Erro ao enviar SMS",
-      description: "Não foi possível enviar as mensagens de confirmação.",
-      variant: "destructive",
-    });
+    throw error;
   }
 };
