@@ -5,19 +5,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { sendConfirmationSMS } from "@/utils/smsService";
 
 export const ConfirmationForm = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    parentName: "",
+    childName: "",
+    phone: "",
+    email: "",
+    guests: "0"
+  });
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [id]: value
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // Aqui seria implementada a lógica de envio para a API
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Enviar SMS de confirmação
+      await sendConfirmationSMS({
+        parentName: formData.parentName,
+        childName: formData.childName,
+        phone: formData.phone,
+        guests: Number(formData.guests)
+      });
       
       toast({
         title: "Confirmação recebida!",
@@ -46,6 +67,8 @@ export const ConfirmationForm = () => {
             required
             placeholder="Digite seu nome completo"
             className="w-full"
+            value={formData.parentName}
+            onChange={handleChange}
           />
         </div>
 
@@ -56,6 +79,8 @@ export const ConfirmationForm = () => {
             required
             placeholder="Digite o nome da criança"
             className="w-full"
+            value={formData.childName}
+            onChange={handleChange}
           />
         </div>
 
@@ -67,6 +92,8 @@ export const ConfirmationForm = () => {
             required
             placeholder="(00) 00000-0000"
             className="w-full"
+            value={formData.phone}
+            onChange={handleChange}
           />
         </div>
 
@@ -78,6 +105,8 @@ export const ConfirmationForm = () => {
             required
             placeholder="seu@email.com"
             className="w-full"
+            value={formData.email}
+            onChange={handleChange}
           />
         </div>
 
@@ -91,6 +120,8 @@ export const ConfirmationForm = () => {
             max="5"
             placeholder="0"
             className="w-full"
+            value={formData.guests}
+            onChange={handleChange}
           />
         </div>
 
