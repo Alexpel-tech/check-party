@@ -1,19 +1,21 @@
-"use server"
+"use server" // Ensures these are server actions
 
-import { createServerClient } from "../supabase/server"
+import { createClient } from "../supabase/server" // Corrected import
 import type { Guest, Party, ReminderConfig, ReminderLog } from "../types"
-import { sendCustomMessage as sendWhatsAppCustomMessage } from "./whatsapp-service"
-import { sendCustomMessage as sendSMSCustomMessage } from "./sms-service"
-import { NotificationService } from "../adapters/notification-service-adapter"
+import { sendCustomMessage as sendWhatsAppCustomMessage } from "./whatsapp-service" // Assuming this path is correct
+import { sendCustomMessage as sendSMSCustomMessage } from "./sms-service" // Assuming this path is correct
+import { NotificationService } from "../adapters/notification-service-adapter" // For sending notifications
 
+// Tipos para o serviço de lembretes - these can be exported
 export type ReminderType = "whatsapp" | "sms" | "email"
 export type ReminderTiming = "1_day" | "2_days" | "3_days" | "1_week" | "custom"
 
+// Example of one of your server actions - ensure all are structured similarly
 export async function createReminderConfig(
   config: Omit<ReminderConfig, "id" | "created_at" | "updated_at">,
 ): Promise<ReminderConfig | null> {
   try {
-    const supabase = createServerClient()
+    const supabase = createClient() // Use the corrected import
     const { data, error } = await supabase.from("reminder_configs").insert(config).select().single()
     if (error) throw error
     return data
@@ -28,7 +30,7 @@ export async function updateReminderConfig(
   config: Partial<ReminderConfig>,
 ): Promise<ReminderConfig | null> {
   try {
-    const supabase = createServerClient()
+    const supabase = createClient()
     const { data, error } = await supabase
       .from("reminder_configs")
       .update({ ...config, updated_at: new Date().toISOString() })
@@ -45,7 +47,7 @@ export async function updateReminderConfig(
 
 export async function getReminderConfigsByParty(partyId: string): Promise<ReminderConfig[]> {
   try {
-    const supabase = createServerClient()
+    const supabase = createClient()
     const { data, error } = await supabase
       .from("reminder_configs")
       .select("*")
@@ -61,7 +63,7 @@ export async function getReminderConfigsByParty(partyId: string): Promise<Remind
 
 export async function deleteReminderConfig(id: string): Promise<boolean> {
   try {
-    const supabase = createServerClient()
+    const supabase = createClient()
     const { error } = await supabase.from("reminder_configs").delete().eq("id", id)
     if (error) throw error
     return true
@@ -80,7 +82,7 @@ async function notifyOrganizerOfReminder(
 ) {
   if (!party.party_parents_id) return
 
-  const supabase = createServerClient()
+  const supabase = createClient()
   try {
     const { data: parentUser, error: parentError } = await supabase
       .from("party_parents")
@@ -123,7 +125,7 @@ export async function sendReminder(
   party: Party,
   type: ReminderType,
   message: string,
-  reminderConfigId?: string, // Adicionado para log
+  reminderConfigId?: string,
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     const processedMessage = message
@@ -146,7 +148,6 @@ export async function sendReminder(
         break
       case "sms":
         if (!guest.whatsapp) {
-          // Assumindo que whatsapp armazena o número de telefone para SMS também
           result = { success: false, error: "Convidado não possui número de telefone" }
           break
         }
@@ -176,11 +177,10 @@ export async function sendReminder(
   } catch (error: any) {
     console.error("Erro crítico ao enviar lembrete:", error)
     await logReminderSent({
-      // Logar falha crítica também
       guest_id: guest.id,
       party_id: party.id,
       reminder_type: type,
-      message: message, // Mensagem original, pois o processamento pode ter falhado
+      message: message,
       status: "failed",
       error_message: error.message || "Erro desconhecido no envio",
       reminder_config_id: reminderConfigId,
@@ -192,7 +192,7 @@ export async function sendReminder(
 
 export async function logReminderSent(log: Omit<ReminderLog, "id" | "created_at">): Promise<ReminderLog | null> {
   try {
-    const supabase = createServerClient()
+    const supabase = createClient()
     const { data, error } = await supabase
       .from("reminder_logs")
       .insert({ ...log, created_at: new Date().toISOString() })
@@ -208,7 +208,7 @@ export async function logReminderSent(log: Omit<ReminderLog, "id" | "created_at"
 
 export async function getReminderLogsByParty(partyId: string): Promise<ReminderLog[]> {
   try {
-    const supabase = createServerClient()
+    const supabase = createClient()
     const { data, error } = await supabase
       .from("reminder_logs")
       .select("*, guests(nome_principal)")
@@ -229,11 +229,11 @@ export async function processScheduledReminders(): Promise<{
   error?: string
 }> {
   try {
-    const supabase = createServerClient()
+    const supabase = createClient()
     const now = new Date()
     const { data: upcomingParties, error: partiesError } = await supabase
       .from("parties")
-      .select("*, party_parents(user_id)") // Incluir user_id do organizador
+      .select("*, party_parents(user_id)")
       .gte("data", now.toISOString().split("T")[0])
       .order("data")
 
@@ -299,11 +299,11 @@ export async function processScheduledReminders(): Promise<{
             .eq("party_id", party.id)
             .eq("reminder_type", config.type)
             .eq("reminder_config_id", config.id)
-            .gte("created_at", new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString()) // Início do dia atual
+            .gte("created_at", new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString())
             .lte(
               "created_at",
               new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString(),
-            ) // Fim do dia atual
+            )
             .limit(1)
 
           if (existingLogs && existingLogs.length > 0) continue
@@ -314,7 +314,7 @@ export async function processScheduledReminders(): Promise<{
           } else {
             failedCount++
           }
-          await new Promise((resolve) => setTimeout(resolve, 300)) // Delay
+          await new Promise((resolve) => setTimeout(resolve, 300))
         }
       }
     }
@@ -324,3 +324,5 @@ export async function processScheduledReminders(): Promise<{
     return { success: false, sent: 0, failed: 0, error: error.message || "Erro ao processar lembretes programados" }
   }
 }
+
+// NO OTHER EXPORTS BELOW THIS LINE, ESPECIALLY NOT 'export const ReminderService = ...'

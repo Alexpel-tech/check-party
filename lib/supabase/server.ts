@@ -1,16 +1,16 @@
-import { createClient as supabaseCreateClient } from "@supabase/supabase-js" // Aliased to avoid potential naming conflicts if 'createClient' is used locally
+import { createClient as supabaseCreateClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
+import type { CookieOptions } from "@supabase/ssr" // Ensure this type is available or use 'any'
 
-// Função para criar um cliente Supabase para uso no lado do servidor
+// Primary function name is createServerClient
 export function createServerClient() {
-  // Reverted to original name
   const cookieStore = cookies()
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.error("Supabase URL or Anon Key is missing in server environment variables.")
+    console.error("Supabase URL or Anon Key is missing in server environment variables for lib/supabase/server.ts")
     throw new Error("Variáveis de ambiente do Supabase não estão configuradas corretamente no servidor.")
   }
 
@@ -19,29 +19,28 @@ export function createServerClient() {
       get(name: string) {
         return cookieStore.get(name)?.value
       },
-      set(name: string, value: string, options: any) {
+      set(name: string, value: string, options: CookieOptions) {
         try {
           cookieStore.set({ name, value, ...options })
         } catch (error) {
-          // This can happen in Server Components when trying to set a cookie
-          // Server Components should not typically set cookies directly.
-          // Route Handlers or Server Actions are the place for that.
-          console.warn(`Failed to set cookie '${name}' from a server context where it might not be allowed.`, error)
+          console.warn(`Failed to set cookie '${name}' from a server context in lib/supabase/server.ts.`, error)
         }
       },
-      remove(name: string, options: any) {
+      remove(name: string, options: CookieOptions) {
         try {
           cookieStore.set({ name, value: "", ...options })
         } catch (error) {
-          // This can happen in Server Components
-          console.warn(`Failed to remove cookie '${name}' from a server context where it might not be allowed.`, error)
+          console.warn(`Failed to remove cookie '${name}' from a server context in lib/supabase/server.ts.`, error)
         }
       },
     },
   })
 }
 
-// Função para verificar se o Supabase está configurado no servidor
+// Exporting the same function under the alias 'createClient'
+// This is to satisfy parts of the code that might be looking for this specific name.
+export { createServerClient as createClient }
+
 export function isServerSupabaseConfigured() {
   return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 }
