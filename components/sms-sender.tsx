@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertCircle, Send, MessageSquare, Loader2, CheckCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { SMSService } from "@/lib/services/sms-service"
+import { SMSService } from "@/lib/adapters/sms-service-adapter"
 import { PartySelector } from "@/components/party-selector"
 import { InvitationPreview } from "@/components/invitation-preview"
 import type { Guest, Party } from "@/lib/types"
@@ -353,9 +353,9 @@ export function SMSSender({ initialGuests, initialParty }: SMSSenderProps) {
               )}
 
               {success && (
-                <Alert variant="success" className="bg-green-50 border-green-200 text-green-800">
+                <Alert variant="default" className="bg-green-50 border-green-200">
                   <CheckCircle className="h-4 w-4 text-green-600" />
-                  <AlertDescription>{success}</AlertDescription>
+                  <AlertDescription className="text-green-800">{success}</AlertDescription>
                 </Alert>
               )}
             </TabsContent>
@@ -410,9 +410,9 @@ export function SMSSender({ initialGuests, initialParty }: SMSSenderProps) {
               )}
 
               {success && (
-                <Alert variant="success" className="bg-green-50 border-green-200 text-green-800">
+                <Alert variant="default" className="bg-green-50 border-green-200">
                   <CheckCircle className="h-4 w-4 text-green-600" />
-                  <AlertDescription>{success}</AlertDescription>
+                  <AlertDescription className="text-green-800">{success}</AlertDescription>
                 </Alert>
               )}
             </TabsContent>

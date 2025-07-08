@@ -16,12 +16,14 @@ import Link from "next/link"
 import { createParty } from "@/lib/actions/parties"
 import { getPartyHalls } from "@/lib/actions/party-halls"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/lib/auth/auth-provider"
 import type { NewParty as NewPartyType, PartyHall } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function NewParty() {
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [showCredentials, setShowCredentials] = useState(false)
@@ -45,7 +47,6 @@ export default function NewParty() {
         const halls = await getPartyHalls()
         setPartyHalls(halls)
 
-        // Se houver salões disponíveis, selecione o primeiro por padrão
         if (halls.length > 0) {
           setFormData((prev) => ({
             ...prev,

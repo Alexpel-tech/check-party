@@ -101,7 +101,7 @@ export async function updateFinalConfirmation(id: string, status: boolean): Prom
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .select("*, parties(*)") // Inclui dados da festa para notificação
+    .select("*, parties(*)")
     .single()
 
   if (error) {
@@ -110,8 +110,7 @@ export async function updateFinalConfirmation(id: string, status: boolean): Prom
   }
 
   if (guestData && status) {
-    // Enviar notificação apenas se confirmado (status === true)
-    const party = guestData.parties as Party // Cast para o tipo Party
+    const party = guestData.parties as Party
     if (party && party.party_parents_id) {
       try {
         const { data: parentUser, error: parentError } = await supabase
@@ -128,7 +127,7 @@ export async function updateFinalConfirmation(id: string, status: boolean): Prom
             title: "Nova Confirmação de Presença!",
             message: `${guestData.nome_principal} confirmou presença na festa de ${party.nome_aniversariante}.`,
             type: "success",
-            link: `/admin/dashboard?partyId=${party.id}`, // Link para o dashboard da festa
+            link: `/admin/dashboard?partyId=${party.id}`,
           })
         }
       } catch (notificationError) {

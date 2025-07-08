@@ -15,7 +15,26 @@ export type SMSResponse = {
   error?: string
 }
 
-// Funções auxiliares privadas (não exportadas)
+// Função auxiliar para formatar número de telefone
+function formatPhoneNumber(phoneNumber: string): string {
+  // Remover todos os caracteres não numéricos
+  const cleaned = phoneNumber.replace(/\D/g, "")
+
+  // Verificar se já tem o código do país
+  if (cleaned.startsWith("1")) {
+    return `+${cleaned}`
+  }
+
+  // Se começar com 55 (Brasil), adicionar o + na frente
+  if (cleaned.startsWith("55")) {
+    return `+${cleaned}`
+  }
+
+  // Adicionar código do Brasil (55) se não tiver
+  return `+55${cleaned}`
+}
+
+// Função auxiliar para enviar mensagem
 async function sendMessage(message: SMSMessage): Promise<SMSResponse> {
   try {
     const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID
@@ -65,6 +84,7 @@ async function sendMessage(message: SMSMessage): Promise<SMSResponse> {
   }
 }
 
+// Função auxiliar para registrar no banco
 async function logMessageToDatabase(message: SMSMessage, messageId?: string): Promise<void> {
   try {
     const supabase = createServerClient()
@@ -80,25 +100,7 @@ async function logMessageToDatabase(message: SMSMessage, messageId?: string): Pr
   }
 }
 
-function formatPhoneNumber(phoneNumber: string): string {
-  // Remover todos os caracteres não numéricos
-  const cleaned = phoneNumber.replace(/\D/g, "")
-
-  // Verificar se já tem o código do país
-  if (cleaned.startsWith("1")) {
-    return `+${cleaned}`
-  }
-
-  // Se começar com 55 (Brasil), adicionar o + na frente
-  if (cleaned.startsWith("55")) {
-    return `+${cleaned}`
-  }
-
-  // Adicionar código do Brasil (55) se não tiver
-  return `+55${cleaned}`
-}
-
-// Funções exportadas
+// Funções exportadas (todas async)
 export async function sendGuestConfirmation(guest: Guest, party: Party): Promise<SMSResponse> {
   if (!guest.whatsapp) {
     return { success: false, error: "Número de telefone não fornecido" }
@@ -165,12 +167,4 @@ export async function getMessageHistory(limit = 50): Promise<any[]> {
     console.error("Erro ao buscar histórico de SMS:", error)
     return []
   }
-}
-
-// Namespace para compatibilidade com código existente
-export const SMSService = {
-  sendGuestConfirmation,
-  sendGuestReminder,
-  sendCustomMessage,
-  getMessageHistory,
 }

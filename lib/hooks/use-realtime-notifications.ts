@@ -1,62 +1,57 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs" // Import Session
-import { NotificationService, type Notification } from "@/lib/adapters/notification-service-adapter"
-import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/lib/auth/auth-provider"
+import { getSupabaseClient } from "@/lib/supabase/client"
+import { NotificationService } from "@/lib/adapters/notification-service-adapter"
+import type { Notification } from "@/lib/types"
 
-export function useRealtimeNotifications(userId: string | undefined) {
+export function useRealtimeNotifications() {
+  const { user, isConfigured } = useAuth()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
-  const supabase = createClientComponentClient()
-  const { toast } = useToast()
+  const [isLoading, setIsLoading] = useState(true)
 
-  const fetchInitialNotifications = useCallback(async () => {
-    if (!userId) {
-      setNotifications([])
-      setUnreadCount(0)
+  // Buscar notificações iniciais
+  const fetchNotifications = useCallback(async () => {
+    if (!user || !isConfigured) {
+      setIsLoading(false)
       return
     }
+
     try {
-      const initialData = await NotificationService.getUserNotifications(userId, 20)
-      setNotifications(initialData)
-      setUnreadCount(initialData.filter((n) => !n.read).length)
+      const data = await NotificationService.getNotifications()
+      setNotifications(data)
+      setUnreadCount(data.filter((n) => !n.read).length)
     } catch (error) {
-      console.error("Erro ao buscar notificações iniciais:", error)
+      console.error("Erro ao buscar notificações:", error)
+    } finally {
+      setIsLoading(false)
     }
-  }, [userId])
+  }, [user, isConfigured])
 
+  // Configurar realtime
   useEffect(() => {
-    if (!userId) return
+    if (!user || !isConfigured) return
 
-    fetchInitialNotifications()
+    fetchNotifications()
+
+    const supabase = getSupabaseClient()
 
     const channel = supabase
-      .channel(`realtime_notifications_user:${userId}`)
+      .channel("notifications")
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "notifications",
-          filter: `user_id=eq.${userId}`,
+          filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
           const newNotification = payload.new as Notification
-          setNotifications(
-            (prev) =>
-              [newNotification, ...prev]
-                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                .slice(0, 50), // Limitar o número de notificações em memória
-          )
-          if (!newNotification.read) {
-            setUnreadCount((prev) => prev + 1)
-          }
-          toast({
-            title: newNotification.title,
-            description: newNotification.message,
-            duration: 7000, // Aumentar duração para dar tempo de ler
-          })
+          setNotifications((prev) => [newNotification, ...prev])
+          setUnreadCount((prev) => prev + 1)
         },
       )
       .on(
@@ -65,27 +60,20 @@ export function useRealtimeNotifications(userId: string | undefined) {
           event: "UPDATE",
           schema: "public",
           table: "notifications",
-          filter: `user_id=eq.${userId}`,
+          filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
           const updatedNotification = payload.new as Notification
-          const oldNotification = payload.old as Notification | undefined
-
           setNotifications((prev) => prev.map((n) => (n.id === updatedNotification.id ? updatedNotification : n)))
 
-          if (oldNotification) {
-            if (!oldNotification.read && updatedNotification.read) {
-              setUnreadCount((prev) => Math.max(0, prev - 1))
-            } else if (oldNotification.read && !updatedNotification.read) {
-              setUnreadCount((prev) => prev + 1)
-            }
-          } else {
-            // Se oldNotification não estiver disponível, recalcular
-            setNotifications((prev) => {
-              setUnreadCount(prev.filter((n) => !n.read).length)
-              return prev
-            })
-          }
+          // Recalcular unreadCount
+          setNotifications((current) => {
+            const newUnreadCount = current
+              .map((n) => (n.id === updatedNotification.id ? updatedNotification : n))
+              .filter((n) => !n.read).length
+            setUnreadCount(newUnreadCount)
+            return current.map((n) => (n.id === updatedNotification.id ? updatedNotification : n))
+          })
         },
       )
       .on(
@@ -94,99 +82,96 @@ export function useRealtimeNotifications(userId: string | undefined) {
           event: "DELETE",
           schema: "public",
           table: "notifications",
-          filter: `user_id=eq.${userId}`,
+          filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          const deletedNotification = payload.old as Notification
-          setNotifications((prev) => prev.filter((n) => n.id !== deletedNotification.id))
-          if (!deletedNotification.read) {
-            setUnreadCount((prev) => Math.max(0, prev - 1))
-          }
+          const deletedId = payload.old.id
+          setNotifications((prev) => {
+            const filtered = prev.filter((n) => n.id !== deletedId)
+            setUnreadCount(filtered.filter((n) => !n.read).length)
+            return filtered
+          })
         },
       )
-      .subscribe((status, err) => {
-        if (status === "SUBSCRIBED") {
-          console.log(`Conectado ao canal de notificações para ${userId}!`)
-        }
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          console.error(`Erro no canal de notificações para ${userId}:`, status, err)
-          // Poderia tentar reconectar aqui ou notificar o usuário
-        }
-      })
+      .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [userId, supabase, toast, fetchInitialNotifications])
+  }, [user, isConfigured, fetchNotifications])
 
-  const markAsRead = async (notificationId: string) => {
-    if (!userId) return
+  // Marcar como lida
+  const markAsRead = useCallback(
+    async (id: string) => {
+      if (!isConfigured) return
+
+      try {
+        await NotificationService.markAsRead(id)
+        // O realtime vai atualizar automaticamente
+      } catch (error) {
+        console.error("Erro ao marcar notificação como lida:", error)
+        throw error
+      }
+    },
+    [isConfigured],
+  )
+
+  // Marcar todas como lidas
+  const markAllAsRead = useCallback(async () => {
+    if (!isConfigured) return
+
     try {
-      await NotificationService.markNotificationAsRead(notificationId)
-      // O evento UPDATE do Supabase Realtime deve atualizar o estado local
+      await NotificationService.markAllAsRead()
+      // Atualizar localmente também para feedback imediato
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+      setUnreadCount(0)
     } catch (error) {
-      console.error("Erro ao marcar notificação como lida:", error)
-      toast({ title: "Erro", description: "Não foi possível marcar como lida.", variant: "destructive" })
+      console.error("Erro ao marcar todas as notificações como lidas:", error)
+      throw error
     }
-  }
+  }, [isConfigured])
 
-  const markAllAsRead = async () => {
-    if (!userId) return
-    try {
-      await NotificationService.markAllNotificationsAsRead(userId)
-      // O evento UPDATE do Supabase Realtime deve atualizar o estado local
-    } catch (error) {
-      console.error("Erro ao marcar todas como lidas:", error)
-      toast({ title: "Erro", description: "Não foi possível marcar todas como lidas.", variant: "destructive" })
-    }
-  }
+  // Excluir notificação
+  const deleteNotification = useCallback(
+    async (id: string) => {
+      if (!isConfigured) return
 
-  const deleteNotification = async (notificationId: string) => {
-    if (!userId) return
-    try {
-      await NotificationService.deleteNotification(notificationId)
-      // O evento DELETE do Supabase Realtime deve atualizar o estado local
-    } catch (error) {
-      console.error("Erro ao excluir notificação:", error)
-      toast({ title: "Erro", description: "Não foi possível excluir a notificação.", variant: "destructive" })
-    }
-  }
+      try {
+        await NotificationService.deleteNotification(id)
+        // O realtime vai atualizar automaticamente
+      } catch (error) {
+        console.error("Erro ao excluir notificação:", error)
+        throw error
+      }
+    },
+    [isConfigured],
+  )
 
-  const sendTestNotification = async () => {
-    if (!userId) {
-      toast({
-        title: "Usuário não logado",
-        description: "Faça login para enviar uma notificação de teste.",
-        variant: "destructive",
-      })
-      return
-    }
+  // Enviar notificação de teste
+  const sendTestNotification = useCallback(async () => {
+    if (!user || !isConfigured) return
+
     try {
       await NotificationService.createNotification({
-        user_id: userId,
-        title: "Notificação de Teste 🚀",
-        message: "Se você recebeu isso, o sistema de notificações em tempo real está funcionando!",
+        user_id: user.id,
+        title: "Notificação de Teste",
+        message: `Esta é uma notificação de teste enviada em ${new Date().toLocaleString("pt-BR")}.`,
         type: "info",
-        link: "/admin/my-notifications",
       })
-      // O toast de sucesso é disparado pelo evento INSERT do realtime
     } catch (error) {
       console.error("Erro ao enviar notificação de teste:", error)
-      toast({
-        title: "Erro no Teste",
-        description: "Não foi possível enviar a notificação de teste. Verifique o console.",
-        variant: "destructive",
-      })
+      throw error
     }
-  }
+  }, [user, isConfigured])
 
   return {
     notifications,
     unreadCount,
+    isLoading,
     markAsRead,
     markAllAsRead,
     deleteNotification,
-    fetchInitialNotifications, // Expor para uso externo se necessário
     sendTestNotification,
+    refetch: fetchNotifications,
   }
 }

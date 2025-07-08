@@ -5,7 +5,6 @@ import type { Party, NewParty, PartyWithGuestCount } from "../types"
 import { revalidatePath } from "next/cache"
 import { generateUniqueLink } from "../utils"
 import { createPartyParent, generateParentUsername, generateRandomPassword } from "./party-parents"
-import { NotificationService } from "../adapters/notification-service-adapter"
 
 // Buscar todas as festas
 export async function getParties(): Promise<Party[]> {
@@ -78,12 +77,13 @@ export async function getPartyByLink(link: string): Promise<Party | null> {
 // Criar uma nova festa
 export async function createParty(
   party: NewParty,
-  userId: string, // Adicionado userId para notificação
 ): Promise<{ party: Party | null; parentCredentials: { username: string; password: string } | null }> {
   const supabase = createServerClient()
+
   if (!party.link_formulario) {
     party.link_formulario = generateUniqueLink(party.nome_aniversariante, party.theme)
   }
+
   const { data, error } = await supabase.from("parties").insert(party).select().single()
 
   if (error) {
@@ -91,30 +91,17 @@ export async function createParty(
     throw new Error("Falha ao criar festa")
   }
 
-  if (data) {
-    // Se a festa foi criada com sucesso
-    try {
-      await NotificationService.createNotification({
-        user_id: userId, // Notificar o usuário que criou a festa
-        title: "Festa Criada com Sucesso!",
-        message: `A festa "${data.nome_aniversariante}" foi criada e está pronta para configuração.`,
-        type: "success",
-        link: `/admin/dashboard?partyId=${data.id}`, // Link para o dashboard da festa
-      })
-    } catch (notificationError) {
-      console.error("Erro ao enviar notificação de criação de festa:", notificationError)
-    }
-  }
-
+  // Gerar credenciais para os pais
   const username = generateParentUsername(party.nome_aniversariante)
   const password = generateRandomPassword()
+
   try {
     await createPartyParent({
       party_id: data.id,
       username,
       password,
-      // user_id: userId, // Se createPartyParent precisar do user_id para associar ao auth.users
     })
+
     revalidatePath("/admin/dashboard")
     return {
       party: data,
@@ -125,8 +112,6 @@ export async function createParty(
     }
   } catch (parentError) {
     console.error("Erro ao criar credenciais dos pais:", parentError)
-    // Mesmo que a criação do pai falhe, a festa foi criada.
-    // Poderia adicionar uma notificação de aviso aqui se necessário.
     return {
       party: data,
       parentCredentials: null,
