@@ -1,129 +1,188 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 
-// Função para enviar mensagem via WhatsApp Business API
-export async function sendWhatsAppMessage(to: string, message: string) {
+interface WhatsAppMessage {
+  to: string
+  message: string
+  partyId?: string
+  guestId?: string
+  type?: "text" | "template"
+  templateName?: string
+  templateParams?: string[]
+}
+
+interface WhatsAppResponse {
+  success: boolean
+  messageId?: string
+  error?: string
+}
+
+export async function sendWhatsAppMessage(data: WhatsAppMessage): Promise<WhatsAppResponse> {
   try {
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
-
-    if (!phoneNumberId || !accessToken) {
+    if (!process.env.WHATSAPP_ACCESS_TOKEN || !process.env.WHATSAPP_PHONE_NUMBER_ID) {
       throw new Error("Credenciais do WhatsApp não configuradas")
     }
 
+    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+
+    // Preparar payload baseado no tipo de mensagem
+    const payload: any = {
+      messaging_product: "whatsapp",
+      to: data.to.replace(/\D/g, ""), // Remove caracteres não numéricos
+    }
+
+    if (data.type === "template" && data.templateName) {
+      payload.type = "template"
+      payload.template = {
+        name: data.templateName,
+        language: { code: "pt_BR" },
+      }
+
+      if (data.templateParams && data.templateParams.length > 0) {
+        payload.template.components = [
+          {
+            type: "body",
+            parameters: data.templateParams.map((param) => ({
+              type: "text",
+              text: param,
+            })),
+          },
+        ]
+      }
+    } else {
+      payload.type = "text"
+      payload.text = { body: data.message }
+    }
+
+    // Enviar mensagem via WhatsApp Business API
     const response = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: to,
-        type: "text",
-        text: {
-          body: message,
-        },
-      }),
+      body: JSON.stringify(payload),
     })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Erro ao enviar WhatsApp: ${error}`)
-    }
 
     const result = await response.json()
 
+    if (!response.ok) {
+      throw new Error(result.error?.message || "Erro ao enviar mensagem WhatsApp")
+    }
+
     // Salvar no histórico
-    await saveWhatsAppHistory(to, message, "sent", result.messages?.[0]?.id)
-
-    return { success: true, messageId: result.messages?.[0]?.id }
-  } catch (error) {
-    console.error("Erro ao enviar WhatsApp:", error)
-    await saveWhatsAppHistory(to, message, "failed", null, error instanceof Error ? error.message : "Erro desconhecido")
-    throw error
-  }
-}
-
-// Função para salvar histórico de WhatsApp
-export async function saveWhatsAppHistory(
-  phoneNumber: string,
-  message: string,
-  status: "sent" | "failed",
-  messageId: string | null,
-  errorMessage?: string,
-) {
-  try {
-    const supabase = createServerClient()
-
-    const { error } = await supabase.from("whatsapp_history").insert({
-      phone_number: phoneNumber,
-      message,
-      status,
-      message_id: messageId,
-      error_message: errorMessage,
+    const supabase = await createServerSupabaseClient()
+    await supabase.from("whatsapp_history").insert({
+      phone_number: data.to,
+      message: data.message,
+      party_id: data.partyId,
+      guest_id: data.guestId,
+      message_type: data.type || "text",
+      template_name: data.templateName,
+      status: "sent",
+      whatsapp_id: result.messages?.[0]?.id,
       sent_at: new Date().toISOString(),
     })
 
-    if (error) {
-      console.error("Erro ao salvar histórico WhatsApp:", error)
+    return {
+      success: true,
+      messageId: result.messages?.[0]?.id,
     }
   } catch (error) {
-    console.error("Erro ao salvar histórico WhatsApp:", error)
+    console.error("Erro ao enviar WhatsApp:", error)
+
+    // Salvar erro no histórico
+    try {
+      const supabase = await createServerSupabaseClient()
+      await supabase.from("whatsapp_history").insert({
+        phone_number: data.to,
+        message: data.message,
+        party_id: data.partyId,
+        guest_id: data.guestId,
+        message_type: data.type || "text",
+        template_name: data.templateName,
+        status: "failed",
+        error_message: error instanceof Error ? error.message : "Erro desconhecido",
+        sent_at: new Date().toISOString(),
+      })
+    } catch (dbError) {
+      console.error("Erro ao salvar no histórico:", dbError)
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para buscar histórico de WhatsApp
-export async function getWhatsAppHistory(limit = 50) {
+export async function getWhatsAppHistory(partyId?: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
+    let query = supabase.from("whatsapp_history").select("*").order("sent_at", { ascending: false })
 
-    const { data, error } = await supabase
-      .from("whatsapp_history")
-      .select("*")
-      .order("sent_at", { ascending: false })
-      .limit(limit)
-
-    if (error) {
-      throw error
+    if (partyId) {
+      query = query.eq("party_id", partyId)
     }
 
-    return data || []
+    const { data, error } = await query
+
+    if (error) throw error
+
+    return { success: true, data }
   } catch (error) {
-    console.error("Erro ao buscar histórico WhatsApp:", error)
-    return []
+    console.error("Erro ao buscar histórico de WhatsApp:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para enviar confirmação de presença via WhatsApp
-export async function sendGuestConfirmationWhatsApp(guestName: string, phoneNumber: string, partyName: string) {
-  const message = `🎉 Olá ${guestName}!\n\nSua presença foi confirmada para a festa:\n*${partyName}*\n\nObrigado! 🎈`
-  return await sendWhatsAppMessage(phoneNumber, message)
-}
-
-// Função para enviar lembrete via WhatsApp
-export async function sendReminderWhatsApp(
+// Templates pré-definidos
+export async function sendConfirmationReminder(
+  to: string,
   guestName: string,
-  phoneNumber: string,
   partyName: string,
   partyDate: string,
+  partyId: string,
+  guestId: string,
 ) {
-  const message = `🎊 Olá ${guestName}!\n\n📅 *Lembrete importante:*\nA festa *${partyName}* será em *${partyDate}*\n\nTe esperamos lá! 🎉`
-  return await sendWhatsAppMessage(phoneNumber, message)
+  const message = `Olá ${guestName}! 👋\n\nLembramos que você foi convidado(a) para a festa "${partyName}" no dia ${partyDate}.\n\nPor favor, confirme sua presença o quanto antes!\n\nObrigado! 🎉`
+
+  return sendWhatsAppMessage({
+    to,
+    message,
+    partyId,
+    guestId,
+    type: "text",
+  })
 }
 
-// Função para enviar mensagem personalizada
-export async function sendCustomWhatsAppMessage(phoneNumber: string, message: string) {
-  return await sendWhatsAppMessage(phoneNumber, message)
+export async function sendConfirmationThankYou(
+  to: string,
+  guestName: string,
+  partyName: string,
+  partyId: string,
+  guestId: string,
+) {
+  const message = `Obrigado ${guestName}! ✅\n\nSua confirmação para a festa "${partyName}" foi recebida com sucesso!\n\nAguardamos você! 🎉`
+
+  return sendWhatsAppMessage({
+    to,
+    message,
+    partyId,
+    guestId,
+    type: "text",
+  })
 }
 
-// Exportar objeto WhatsAppService para compatibilidade
+// Export do serviço
 export const WhatsAppService = {
   sendWhatsAppMessage,
-  saveWhatsAppHistory,
   getWhatsAppHistory,
-  sendGuestConfirmationWhatsApp,
-  sendReminderWhatsApp,
-  sendCustomWhatsAppMessage,
+  sendConfirmationReminder,
+  sendConfirmationThankYou,
 }

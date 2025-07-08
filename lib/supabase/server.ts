@@ -1,44 +1,34 @@
-import { createClient as supabaseCreateClient } from "@supabase/supabase-js"
+import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
-// Função para criar um cliente Supabase para uso no lado do servidor
-export function createServerClient() {
-  const cookieStore = cookies()
+export async function createServerSupabaseClient() {
+  const cookieStore = await cookies()
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Variáveis de ambiente do Supabase não estão configuradas corretamente.")
-  }
-
-  return supabaseCreateClient(supabaseUrl, supabaseAnonKey, {
+  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value
+      getAll() {
+        return cookieStore.getAll()
       },
-      set(name: string, value: string, options: any) {
+      setAll(cookiesToSet) {
         try {
-          cookieStore.set({ name, value, ...options })
-        } catch (error) {
-          console.warn(`Failed to set cookie '${name}' from a server context.`, error)
-        }
-      },
-      remove(name: string, options: any) {
-        try {
-          cookieStore.set({ name, value: "", ...options })
-        } catch (error) {
-          console.warn(`Failed to remove cookie '${name}' from a server context.`, error)
+          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+        } catch {
+          // The `setAll` method was called from a Server Component.
+          // This can be ignored if you have middleware refreshing
+          // user sessions.
         }
       },
     },
   })
 }
 
-// Exportar também como createClient para compatibilidade
-export { createServerClient as createClient }
+// Export the createServerClient function directly
+export { createServerClient }
 
-// Função para verificar se o Supabase está configurado no servidor
+// Export aliases for compatibility
+export const createClient = createServerSupabaseClient
+export const supabase = createServerSupabaseClient
+
 export function isServerSupabaseConfigured() {
   return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 }

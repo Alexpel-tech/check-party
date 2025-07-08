@@ -1,46 +1,48 @@
-import { getSupabaseClient } from "@/lib/supabase/client"
+import {
+  sendWhatsAppMessage,
+  getWhatsAppHistory,
+  sendConfirmationReminder,
+  sendConfirmationThankYou,
+  WhatsAppService,
+} from "@/lib/services/whatsapp-service"
 
-// Adapter para uso em componentes cliente
-export const WhatsAppServiceAdapter = {
-  async getWhatsAppHistory(limit = 50) {
-    try {
-      const supabase = getSupabaseClient()
-
-      const { data, error } = await supabase
-        .from("whatsapp_history")
-        .select("*")
-        .order("sent_at", { ascending: false })
-        .limit(limit)
-
-      if (error) {
-        throw error
-      }
-
-      return data || []
-    } catch (error) {
-      console.error("Erro ao buscar histórico WhatsApp:", error)
-      return []
-    }
-  },
-
-  async getStats() {
-    try {
-      const supabase = getSupabaseClient()
-
-      const { data, error } = await supabase.from("whatsapp_history").select("status")
-
-      if (error) {
-        throw error
-      }
-
-      const total = data?.length || 0
-      const sent = data?.filter((item) => item.status === "sent").length || 0
-      const failed = data?.filter((item) => item.status === "failed").length || 0
-
-      return { total, sent, failed }
-    } catch (error) {
-      console.error("Erro ao buscar estatísticas WhatsApp:", error)
-      return { total: 0, sent: 0, failed: 0 }
-    }
-  },
+// Adapter functions for client components
+export async function sendWhatsAppMessageAdapter(data: {
+  to: string
+  message: string
+  partyId?: string
+  guestId?: string
+  type?: "text" | "template"
+  templateName?: string
+  templateParams?: string[]
+}) {
+  return await sendWhatsAppMessage(data)
 }
+
+export async function getWhatsAppHistoryAdapter(partyId?: string) {
+  return await getWhatsAppHistory(partyId)
+}
+
+export async function sendConfirmationReminderAdapter(
+  to: string,
+  guestName: string,
+  partyName: string,
+  partyDate: string,
+  partyId: string,
+  guestId: string,
+) {
+  return await sendConfirmationReminder(to, guestName, partyName, partyDate, partyId, guestId)
+}
+
+export async function sendConfirmationThankYouAdapter(
+  to: string,
+  guestName: string,
+  partyName: string,
+  partyId: string,
+  guestId: string,
+) {
+  return await sendConfirmationThankYou(to, guestName, partyName, partyId, guestId)
+}
+
+// Export the service for compatibility
+export { WhatsAppService }

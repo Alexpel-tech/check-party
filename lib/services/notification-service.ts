@@ -1,70 +1,77 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 
-// Função para criar notificação
-export async function createNotification(notification: {
+interface Notification {
+  id?: string
   userId: string
   title: string
   message: string
-  type?: string
-  link?: string
-}) {
+  type: "info" | "success" | "warning" | "error"
+  read: boolean
+  createdAt?: string
+  partyId?: string
+  guestId?: string
+  actionUrl?: string
+}
+
+export async function createNotification(notification: Omit<Notification, "id" | "createdAt" | "read">) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
 
     const { data, error } = await supabase
       .from("notifications")
       .insert({
-        user_id: notification.userId,
-        title: notification.title,
-        message: notification.message,
-        type: notification.type || "default",
-        link: notification.link,
+        ...notification,
         read: false,
         created_at: new Date().toISOString(),
       })
       .select()
       .single()
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    return data
+    return { success: true, data }
   } catch (error) {
     console.error("Erro ao criar notificação:", error)
-    throw error
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para buscar notificações do usuário
-export async function getUserNotifications(userId: string, limit = 50) {
+export async function getNotifications(userId: string, unreadOnly = false) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("notifications")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
-      .limit(limit)
 
-    if (error) {
-      throw error
+    if (unreadOnly) {
+      query = query.eq("read", false)
     }
 
-    return data || []
+    const { data, error } = await query
+
+    if (error) throw error
+
+    return { success: true, data }
   } catch (error) {
     console.error("Erro ao buscar notificações:", error)
-    return []
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para marcar notificação como lida
 export async function markNotificationAsRead(notificationId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
 
     const { data, error } = await supabase
       .from("notifications")
@@ -73,61 +80,61 @@ export async function markNotificationAsRead(notificationId: string) {
       .select()
       .single()
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    return data
+    return { success: true, data }
   } catch (error) {
     console.error("Erro ao marcar notificação como lida:", error)
-    throw error
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para marcar todas as notificações como lidas
 export async function markAllNotificationsAsRead(userId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("notifications")
       .update({ read: true })
       .eq("user_id", userId)
       .eq("read", false)
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    return { success: true }
+    return { success: true, data }
   } catch (error) {
     console.error("Erro ao marcar todas as notificações como lidas:", error)
-    throw error
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para deletar notificação
 export async function deleteNotification(notificationId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
 
     const { error } = await supabase.from("notifications").delete().eq("id", notificationId)
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
     return { success: true }
   } catch (error) {
     console.error("Erro ao deletar notificação:", error)
-    throw error
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para contar notificações não lidas
-export async function getUnreadNotificationsCount(userId: string) {
+export async function getUnreadCount(userId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
 
     const { count, error } = await supabase
       .from("notifications")
@@ -135,45 +142,87 @@ export async function getUnreadNotificationsCount(userId: string) {
       .eq("user_id", userId)
       .eq("read", false)
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    return count || 0
+    return { success: true, count: count || 0 }
   } catch (error) {
     console.error("Erro ao contar notificações não lidas:", error)
-    return 0
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+      count: 0,
+    }
   }
 }
 
-// Função para criar notificação de confirmação de presença
-export async function createGuestConfirmationNotification(userId: string, guestName: string, partyName: string) {
-  return await createNotification({
+// Funções de conveniência para tipos específicos de notificação
+export async function notifyGuestConfirmation(
+  userId: string,
+  guestName: string,
+  partyName: string,
+  partyId: string,
+  guestId: string,
+) {
+  return createNotification({
     userId,
-    title: "Nova confirmação de presença",
-    message: `${guestName} confirmou presença na festa: ${partyName}`,
-    type: "guest_confirmation",
+    title: "Nova Confirmação",
+    message: `${guestName} confirmou presença na festa "${partyName}"`,
+    type: "success",
+    partyId,
+    guestId,
+    actionUrl: `/admin/parties/${partyId}`,
   })
 }
 
-// Função para criar notificação de nova festa
-export async function createNewPartyNotification(userId: string, partyName: string) {
-  return await createNotification({
+export async function notifyGuestDecline(
+  userId: string,
+  guestName: string,
+  partyName: string,
+  partyId: string,
+  guestId: string,
+) {
+  return createNotification({
     userId,
-    title: "Nova festa criada",
-    message: `A festa "${partyName}" foi criada com sucesso`,
-    type: "new_party",
+    title: "Convidado Declinou",
+    message: `${guestName} declinou o convite para a festa "${partyName}"`,
+    type: "warning",
+    partyId,
+    guestId,
+    actionUrl: `/admin/parties/${partyId}`,
   })
 }
 
-// Exportar objeto NotificationService para compatibilidade
+export async function notifyReminderSent(userId: string, count: number, partyName: string, partyId: string) {
+  return createNotification({
+    userId,
+    title: "Lembretes Enviados",
+    message: `${count} lembretes foram enviados para a festa "${partyName}"`,
+    type: "info",
+    partyId,
+    actionUrl: `/admin/parties/${partyId}`,
+  })
+}
+
+export async function notifyPaymentReceived(userId: string, planName: string, amount: number) {
+  return createNotification({
+    userId,
+    title: "Pagamento Recebido",
+    message: `Pagamento de R$ ${amount.toFixed(2)} recebido para o plano ${planName}`,
+    type: "success",
+    actionUrl: "/admin/settings",
+  })
+}
+
+// Export do serviço
 export const NotificationService = {
   createNotification,
-  getUserNotifications,
+  getNotifications,
   markNotificationAsRead,
   markAllNotificationsAsRead,
   deleteNotification,
-  getUnreadNotificationsCount,
-  createGuestConfirmationNotification,
-  createNewPartyNotification,
+  getUnreadCount,
+  notifyGuestConfirmation,
+  notifyGuestDecline,
+  notifyReminderSent,
+  notifyPaymentReceived,
 }

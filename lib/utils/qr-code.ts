@@ -1,102 +1,146 @@
-// Funções utilitárias para geração e validação de QR Codes
-import { createServerClient } from "../supabase/server"
-import type { Guest } from "../types"
+import { supabase } from "@/lib/supabase/client"
+import QRCode from "qrcode"
 
-// Gerar um token único para o QR Code
-export function generateQRToken(guestId: string, partyId: string): string {
-  // Combinar IDs e adicionar timestamp para unicidade
-  const timestamp = Date.now()
-  const token = `${guestId}_${partyId}_${timestamp}`
-
-  // Codificar em base64 para tornar mais compacto
-  return Buffer.from(token).toString("base64")
-}
-
-// Validar um token de QR Code
-export async function validateQRToken(token: string): Promise<{
-  valid: boolean
-  guest?: Guest | null
-  error?: string
-}> {
+export async function generateQRCode(data: string): Promise<string> {
   try {
-    // Decodificar o token
-    const decoded = Buffer.from(token, "base64").toString()
-    const [guestId, partyId] = decoded.split("_")
-
-    if (!guestId || !partyId) {
-      return { valid: false, error: "QR Code inválido" }
-    }
-
-    // Buscar o convidado no banco de dados
-    const supabase = createServerClient()
-    const { data, error } = await supabase.from("guests").select("*").eq("id", guestId).eq("party_id", partyId).single()
-
-    if (error || !data) {
-      return { valid: false, error: "Convidado não encontrado" }
-    }
-
-    return { valid: true, guest: data }
+    const qrCodeDataURL = await QRCode.toDataURL(data, {
+      width: 256,
+      margin: 2,
+      color: {
+        dark: "#000000",
+        light: "#FFFFFF",
+      },
+    })
+    return qrCodeDataURL
   } catch (error) {
-    console.error("Erro ao validar QR Code:", error)
-    return { valid: false, error: "Erro ao processar QR Code" }
+    console.error("Erro ao gerar QR Code:", error)
+    throw new Error("Erro ao gerar QR Code")
   }
 }
 
-// Registrar check-in do convidado
-export async function registerCheckIn(guestId: string): Promise<{
-  success: boolean
-  error?: string
-}> {
+export async function generateCheckInQRCode(guestId: string, partyId: string): Promise<string> {
   try {
-    const supabase = createServerClient()
+    // Gerar token único para o check-in
+    const token = `${guestId}-${partyId}-${Date.now()}`
+    const checkInUrl = `${window.location.origin}/check-in/${token}`
 
-    // Verificar se o convidado já fez check-in
-    const { data: existingCheckIn } = await supabase.from("guest_checkins").select("*").eq("guest_id", guestId).single()
-
-    if (existingCheckIn) {
-      return {
-        success: false,
-        error: "Check-in já realizado às " + new Date(existingCheckIn.check_in_time).toLocaleTimeString("pt-BR"),
-      }
-    }
-
-    // Registrar o check-in
-    const { error } = await supabase.from("guest_checkins").insert({
+    // Salvar o token no banco de dados
+    const { error } = await supabase.from("qr_codes").insert({
       guest_id: guestId,
-      check_in_time: new Date().toISOString(),
+      party_id: partyId,
+      token,
+      check_in_url: checkInUrl,
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 horas
     })
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    return { success: true }
+    // Gerar QR Code com a URL
+    return await generateQRCode(checkInUrl)
   } catch (error) {
-    console.error("Erro ao registrar check-in:", error)
-    return { success: false, error: "Erro ao registrar check-in" }
+    console.error("Erro ao gerar QR Code de check-in:", error)
+    throw new Error("Erro ao gerar QR Code de check-in")
   }
 }
 
-// Obter status de check-in de um convidado
-export async function getCheckInStatus(guestId: string): Promise<{
-  checkedIn: boolean
-  checkInTime?: string
-}> {
+export async function validateCheckInToken(token: string) {
   try {
-    const supabase = createServerClient()
+    const { data, error } = await supabase
+      .from("qr_codes")
+      .select(`
+        *,
+        guests(*),
+        parties(*)
+      `)
+      .eq("token", token)
+      .gt("expires_at", new Date().toISOString())
+      .single()
 
-    const { data } = await supabase.from("guest_checkins").select("*").eq("guest_id", guestId).single()
+    if (error) throw error
 
-    if (data) {
-      return {
-        checkedIn: true,
-        checkInTime: data.check_in_time,
-      }
+    return { success: true, data }
+  } catch (error) {
+    console.error("Erro ao validar token de check-in:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Token inválido ou expirado",
+    }
+  }
+}
+
+export async function processCheckIn(token: string) {
+  try {
+    // Validar token
+    const validation = await validateCheckInToken(token)
+    if (!validation.success || !validation.data) {
+      throw new Error(validation.error || "Token inválido")
     }
 
-    return { checkedIn: false }
+    const { guests, parties } = validation.data
+
+    // Marcar convidado como presente
+    const { error: updateError } = await supabase
+      .from("guests")
+      .update({
+        status: "confirmed",
+        checked_in: true,
+        checked_in_at: new Date().toISOString(),
+      })
+      .eq("id", guests.id)
+
+    if (updateError) throw updateError
+
+    // Marcar QR Code como usado
+    const { error: qrError } = await supabase
+      .from("qr_codes")
+      .update({
+        used: true,
+        used_at: new Date().toISOString(),
+      })
+      .eq("token", token)
+
+    if (qrError) throw qrError
+
+    return {
+      success: true,
+      guest: guests,
+      party: parties,
+    }
   } catch (error) {
-    console.error("Erro ao verificar status de check-in:", error)
-    return { checkedIn: false }
+    console.error("Erro ao processar check-in:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro ao processar check-in",
+    }
+  }
+}
+
+export async function getQRCodeHistory(partyId?: string) {
+  try {
+    let query = supabase
+      .from("qr_codes")
+      .select(`
+        *,
+        guests(name, email, phone),
+        parties(name, date)
+      `)
+      .order("created_at", { ascending: false })
+
+    if (partyId) {
+      query = query.eq("party_id", partyId)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    return { success: true, data }
+  } catch (error) {
+    console.error("Erro ao buscar histórico de QR Codes:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro ao buscar histórico",
+    }
   }
 }

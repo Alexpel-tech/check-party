@@ -2,30 +2,46 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, MessageSquare, Send } from "lucide-react"
-import { sendSMS, sendGuestConfirmationSMS, sendReminderSMS } from "@/lib/services/sms-service"
+import { sendSMSAdapter } from "@/lib/adapters/sms-service-adapter"
+import { Loader2, MessageSquare } from "lucide-react"
 
 interface SMSSenderProps {
   partyId?: string
-  guestName?: string
-  guestPhone?: string
-  partyName?: string
-  partyDate?: string
+  guestId?: string
+  onSent?: () => void
 }
 
-export function SMSSender({ partyId, guestName, guestPhone, partyName, partyDate }: SMSSenderProps) {
-  const [phoneNumber, setPhoneNumber] = useState(guestPhone || "")
+export function SMSSender({ partyId, guestId, onSent }: SMSSenderProps) {
+  const [phoneNumber, setPhoneNumber] = useState("")
   const [message, setMessage] = useState("")
+  const [messageType, setMessageType] = useState("custom")
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
 
-  const handleSendSMS = async () => {
-    if (!phoneNumber || !message) {
+  const messageTemplates = {
+    confirmation: "Olá! Por favor, confirme sua presença na festa. Aguardamos sua resposta!",
+    reminder: "Lembramos que você foi convidado(a) para nossa festa. Não esqueça de confirmar sua presença!",
+    thankYou: "Obrigado por confirmar sua presença! Aguardamos você na festa!",
+    custom: "",
+  }
+
+  const handleMessageTypeChange = (type: string) => {
+    setMessageType(type)
+    if (type !== "custom") {
+      setMessage(messageTemplates[type as keyof typeof messageTemplates])
+    } else {
+      setMessage("")
+    }
+  }
+
+  const handleSend = async () => {
+    if (!phoneNumber.trim() || !message.trim()) {
       toast({
         title: "Erro",
         description: "Por favor, preencha o número de telefone e a mensagem.",
@@ -35,77 +51,36 @@ export function SMSSender({ partyId, guestName, guestPhone, partyName, partyDate
     }
 
     setIsLoading(true)
+
     try {
-      await sendSMS(phoneNumber, message)
-      toast({
-        title: "SMS enviado!",
-        description: "A mensagem foi enviada com sucesso.",
+      const result = await sendSMSAdapter({
+        to: phoneNumber,
+        message,
+        partyId,
+        guestId,
       })
-      setMessage("")
-      if (!guestPhone) {
+
+      if (result.success) {
+        toast({
+          title: "SMS Enviado",
+          description: "A mensagem foi enviada com sucesso!",
+        })
+
+        // Limpar formulário
         setPhoneNumber("")
+        setMessage("")
+        setMessageType("custom")
+
+        // Callback opcional
+        onSent?.()
+      } else {
+        throw new Error(result.error || "Erro ao enviar SMS")
       }
     } catch (error) {
-      toast({
-        title: "Erro ao enviar SMS",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleSendConfirmation = async () => {
-    if (!guestName || !phoneNumber || !partyName) {
+      console.error("Erro ao enviar SMS:", error)
       toast({
         title: "Erro",
-        description: "Dados insuficientes para enviar confirmação.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsLoading(true)
-    try {
-      await sendGuestConfirmationSMS(guestName, phoneNumber, partyName)
-      toast({
-        title: "Confirmação enviada!",
-        description: "SMS de confirmação enviado com sucesso.",
-      })
-    } catch (error) {
-      toast({
-        title: "Erro ao enviar confirmação",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleSendReminder = async () => {
-    if (!guestName || !phoneNumber || !partyName || !partyDate) {
-      toast({
-        title: "Erro",
-        description: "Dados insuficientes para enviar lembrete.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsLoading(true)
-    try {
-      const formattedDate = new Date(partyDate).toLocaleDateString("pt-BR")
-      await sendReminderSMS(guestName, phoneNumber, partyName, formattedDate)
-      toast({
-        title: "Lembrete enviado!",
-        description: "SMS de lembrete enviado com sucesso.",
-      })
-    } catch (error) {
-      toast({
-        title: "Erro ao enviar lembrete",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
+        description: error instanceof Error ? error.message : "Erro ao enviar SMS",
         variant: "destructive",
       })
     } finally {
@@ -128,11 +103,25 @@ export function SMSSender({ partyId, guestName, guestPhone, partyName, partyDate
           <Input
             id="phone"
             type="tel"
-            placeholder="+5511999999999"
+            placeholder="+55 11 99999-9999"
             value={phoneNumber}
             onChange={(e) => setPhoneNumber(e.target.value)}
-            disabled={!!guestPhone}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="messageType">Tipo de Mensagem</Label>
+          <Select value={messageType} onValueChange={handleMessageTypeChange}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione o tipo de mensagem" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="confirmation">Confirmação</SelectItem>
+              <SelectItem value="reminder">Lembrete</SelectItem>
+              <SelectItem value="thankYou">Agradecimento</SelectItem>
+              <SelectItem value="custom">Personalizada</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-2">
@@ -144,30 +133,19 @@ export function SMSSender({ partyId, guestName, guestPhone, partyName, partyDate
             onChange={(e) => setMessage(e.target.value)}
             rows={4}
           />
+          <p className="text-sm text-muted-foreground">{message.length}/160 caracteres</p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={handleSendSMS}
-            disabled={isLoading || !phoneNumber || !message}
-            className="flex items-center gap-2"
-          >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Enviar SMS
-          </Button>
-
-          {guestName && partyName && (
-            <Button variant="outline" onClick={handleSendConfirmation} disabled={isLoading || !phoneNumber}>
-              Enviar Confirmação
-            </Button>
+        <Button onClick={handleSend} disabled={isLoading || !phoneNumber.trim() || !message.trim()} className="w-full">
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Enviando...
+            </>
+          ) : (
+            "Enviar SMS"
           )}
-
-          {guestName && partyName && partyDate && (
-            <Button variant="outline" onClick={handleSendReminder} disabled={isLoading || !phoneNumber}>
-              Enviar Lembrete
-            </Button>
-          )}
-        </div>
+        </Button>
       </CardContent>
     </Card>
   )

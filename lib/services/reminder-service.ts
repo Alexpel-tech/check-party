@@ -1,240 +1,304 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
-import { sendWhatsAppMessage } from "./whatsapp-service"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { sendSMS } from "./sms-service"
+import { sendWhatsAppMessage } from "./whatsapp-service"
 
-// Função para criar configuração de lembrete
-export async function createReminderConfig(config: {
+interface ReminderConfig {
   partyId: string
-  reminderType: "whatsapp" | "sms" | "both"
+  reminderType: "sms" | "whatsapp" | "both"
+  daysBeforeEvent: number
+  customMessage?: string
+  enabled: boolean
+}
+
+interface ReminderJob {
+  id: string
+  partyId: string
+  guestId: string
+  reminderType: "sms" | "whatsapp"
   scheduledFor: string
+  status: "pending" | "sent" | "failed"
   message: string
-  isActive: boolean
-}) {
+}
+
+export async function createReminderConfig(config: ReminderConfig) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
 
     const { data, error } = await supabase.from("reminder_configs").insert(config).select().single()
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    return data
+    return { success: true, data }
   } catch (error) {
     console.error("Erro ao criar configuração de lembrete:", error)
-    throw error
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para buscar configurações de lembrete
+export async function updateReminderConfig(id: string, config: Partial<ReminderConfig>) {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    const { data, error } = await supabase.from("reminder_configs").update(config).eq("id", id).select().single()
+
+    if (error) throw error
+
+    return { success: true, data }
+  } catch (error) {
+    console.error("Erro ao atualizar configuração de lembrete:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
+  }
+}
+
 export async function getReminderConfigs(partyId?: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
 
-    let query = supabase.from("reminder_configs").select("*")
+    let query = supabase.from("reminder_configs").select("*").order("created_at", { ascending: false })
 
     if (partyId) {
       query = query.eq("party_id", partyId)
     }
 
-    const { data, error } = await query.order("created_at", { ascending: false })
+    const { data, error } = await query
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    return data || []
+    return { success: true, data }
   } catch (error) {
     console.error("Erro ao buscar configurações de lembrete:", error)
-    return []
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para processar lembretes pendentes
-export async function processScheduledReminders() {
+export async function scheduleReminders(partyId: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
 
-    // Buscar lembretes que devem ser enviados agora
-    const { data: reminders, error } = await supabase
+    // Buscar configurações de lembrete para a festa
+    const { data: configs, error: configError } = await supabase
       .from("reminder_configs")
-      .select(`
-        *,
-        parties (
-          id,
-          child_name,
-          party_date,
-          guests (
-            id,
-            name,
-            phone,
-            status
-          )
-        )
-      `)
-      .eq("is_active", true)
-      .lte("scheduled_for", new Date().toISOString())
+      .select("*")
+      .eq("party_id", partyId)
+      .eq("enabled", true)
 
-    if (error) {
-      throw error
+    if (configError) throw configError
+
+    if (!configs || configs.length === 0) {
+      return { success: true, message: "Nenhuma configuração de lembrete encontrada" }
     }
 
-    for (const reminder of reminders || []) {
-      await processReminder(reminder)
-    }
+    // Buscar dados da festa
+    const { data: party, error: partyError } = await supabase
+      .from("parties")
+      .select("*, guests(*)")
+      .eq("id", partyId)
+      .single()
 
-    return { success: true, processed: reminders?.length || 0 }
-  } catch (error) {
-    console.error("Erro ao processar lembretes:", error)
-    throw error
-  }
-}
+    if (partyError) throw partyError
 
-// Função para processar um lembrete específico
-export async function processReminder(reminder: any) {
-  try {
-    const supabase = createServerClient()
-    const party = reminder.parties
+    const partyDate = new Date(party.date)
+    const jobs: Omit<ReminderJob, "id">[] = []
 
-    if (!party || !party.guests) {
-      return
-    }
+    // Criar jobs de lembrete para cada configuração e convidado
+    for (const config of configs) {
+      const reminderDate = new Date(partyDate)
+      reminderDate.setDate(reminderDate.getDate() - config.daysBeforeEvent)
 
-    // Filtrar apenas convidados confirmados
-    const confirmedGuests = party.guests.filter((guest: any) => guest.status === "confirmed")
+      for (const guest of party.guests) {
+        if (guest.status === "pending") {
+          const message =
+            config.customMessage ||
+            `Olá ${guest.name}! Lembramos que você foi convidado(a) para a festa "${party.name}" no dia ${partyDate.toLocaleDateString("pt-BR")}. Por favor, confirme sua presença!`
 
-    for (const guest of confirmedGuests) {
-      if (!guest.phone) continue
+          if (config.reminderType === "sms" || config.reminderType === "both") {
+            if (guest.phone) {
+              jobs.push({
+                partyId,
+                guestId: guest.id,
+                reminderType: "sms",
+                scheduledFor: reminderDate.toISOString(),
+                status: "pending",
+                message,
+              })
+            }
+          }
 
-      try {
-        let success = false
-        let errorMessage = ""
-
-        // Personalizar mensagem
-        const personalizedMessage = reminder.message
-          .replace("{guest_name}", guest.name)
-          .replace("{party_name}", `festa do(a) ${party.child_name}`)
-          .replace("{party_date}", new Date(party.party_date).toLocaleDateString("pt-BR"))
-
-        // Enviar conforme o tipo
-        if (reminder.reminder_type === "whatsapp" || reminder.reminder_type === "both") {
-          try {
-            await sendWhatsAppMessage(guest.phone, personalizedMessage)
-            success = true
-          } catch (error) {
-            errorMessage += `WhatsApp: ${error instanceof Error ? error.message : "Erro desconhecido"}; `
+          if (config.reminderType === "whatsapp" || config.reminderType === "both") {
+            if (guest.phone) {
+              jobs.push({
+                partyId,
+                guestId: guest.id,
+                reminderType: "whatsapp",
+                scheduledFor: reminderDate.toISOString(),
+                status: "pending",
+                message,
+              })
+            }
           }
         }
-
-        if (reminder.reminder_type === "sms" || reminder.reminder_type === "both") {
-          try {
-            await sendSMS(guest.phone, personalizedMessage)
-            success = true
-          } catch (error) {
-            errorMessage += `SMS: ${error instanceof Error ? error.message : "Erro desconhecido"}; `
-          }
-        }
-
-        // Salvar log do lembrete
-        await supabase.from("reminder_logs").insert({
-          reminder_config_id: reminder.id,
-          guest_id: guest.id,
-          phone_number: guest.phone,
-          message: personalizedMessage,
-          status: success ? "sent" : "failed",
-          error_message: errorMessage || null,
-          sent_at: new Date().toISOString(),
-        })
-      } catch (error) {
-        console.error(`Erro ao enviar lembrete para ${guest.name}:`, error)
       }
     }
 
-    // Desativar o lembrete após o envio
-    await supabase.from("reminder_configs").update({ is_active: false }).eq("id", reminder.id)
+    // Salvar jobs no banco
+    if (jobs.length > 0) {
+      const { error: jobError } = await supabase.from("reminder_jobs").insert(jobs)
+
+      if (jobError) throw jobError
+    }
+
+    return {
+      success: true,
+      message: `${jobs.length} lembretes agendados com sucesso`,
+    }
   } catch (error) {
-    console.error("Erro ao processar lembrete:", error)
+    console.error("Erro ao agendar lembretes:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para buscar logs de lembretes
-export async function getReminderLogs(reminderConfigId?: string, limit = 50) {
+export async function processPendingReminders() {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
+    const now = new Date().toISOString()
 
-    let query = supabase
-      .from("reminder_logs")
+    // Buscar lembretes pendentes que devem ser enviados
+    const { data: jobs, error: jobError } = await supabase
+      .from("reminder_jobs")
       .select(`
         *,
-        guests (
-          name
-        )
+        guests(*),
+        parties(*)
       `)
-      .order("sent_at", { ascending: false })
-      .limit(limit)
+      .eq("status", "pending")
+      .lte("scheduled_for", now)
 
-    if (reminderConfigId) {
-      query = query.eq("reminder_config_id", reminderConfigId)
+    if (jobError) throw jobError
+
+    if (!jobs || jobs.length === 0) {
+      return { success: true, message: "Nenhum lembrete pendente" }
+    }
+
+    let sentCount = 0
+    let failedCount = 0
+
+    // Processar cada job
+    for (const job of jobs) {
+      try {
+        let result
+
+        if (job.reminderType === "sms") {
+          result = await sendSMS({
+            to: job.guests.phone,
+            message: job.message,
+            partyId: job.partyId,
+            guestId: job.guestId,
+          })
+        } else if (job.reminderType === "whatsapp") {
+          result = await sendWhatsAppMessage({
+            to: job.guests.phone,
+            message: job.message,
+            partyId: job.partyId,
+            guestId: job.guestId,
+          })
+        }
+
+        // Atualizar status do job
+        const newStatus = result?.success ? "sent" : "failed"
+        await supabase
+          .from("reminder_jobs")
+          .update({
+            status: newStatus,
+            processed_at: new Date().toISOString(),
+            error_message: result?.error,
+          })
+          .eq("id", job.id)
+
+        if (result?.success) {
+          sentCount++
+        } else {
+          failedCount++
+        }
+      } catch (error) {
+        console.error(`Erro ao processar job ${job.id}:`, error)
+
+        await supabase
+          .from("reminder_jobs")
+          .update({
+            status: "failed",
+            processed_at: new Date().toISOString(),
+            error_message: error instanceof Error ? error.message : "Erro desconhecido",
+          })
+          .eq("id", job.id)
+
+        failedCount++
+      }
+    }
+
+    return {
+      success: true,
+      message: `Processados ${jobs.length} lembretes: ${sentCount} enviados, ${failedCount} falharam`,
+    }
+  } catch (error) {
+    console.error("Erro ao processar lembretes:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
+  }
+}
+
+export async function getReminderJobs(partyId?: string) {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    let query = supabase
+      .from("reminder_jobs")
+      .select(`
+        *,
+        guests(name, phone),
+        parties(name, date)
+      `)
+      .order("scheduled_for", { ascending: false })
+
+    if (partyId) {
+      query = query.eq("party_id", partyId)
     }
 
     const { data, error } = await query
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    return data || []
+    return { success: true, data }
   } catch (error) {
-    console.error("Erro ao buscar logs de lembretes:", error)
-    return []
+    console.error("Erro ao buscar jobs de lembrete:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para atualizar configuração de lembrete
-export async function updateReminderConfig(id: string, updates: any) {
-  try {
-    const supabase = createServerClient()
-
-    const { data, error } = await supabase.from("reminder_configs").update(updates).eq("id", id).select().single()
-
-    if (error) {
-      throw error
-    }
-
-    return data
-  } catch (error) {
-    console.error("Erro ao atualizar configuração de lembrete:", error)
-    throw error
-  }
-}
-
-// Função para deletar configuração de lembrete
-export async function deleteReminderConfig(id: string) {
-  try {
-    const supabase = createServerClient()
-
-    const { error } = await supabase.from("reminder_configs").delete().eq("id", id)
-
-    if (error) {
-      throw error
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error("Erro ao deletar configuração de lembrete:", error)
-    throw error
-  }
-}
-
-// Exportar objeto ReminderService para compatibilidade
+// Export do serviço
 export const ReminderService = {
   createReminderConfig,
-  getReminderConfigs,
-  processScheduledReminders,
-  processReminder,
-  getReminderLogs,
   updateReminderConfig,
-  deleteReminderConfig,
+  getReminderConfigs,
+  scheduleReminders,
+  processPendingReminders,
+  getReminderJobs,
 }

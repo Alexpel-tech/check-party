@@ -1,126 +1,156 @@
 "use client"
-
 import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { cn } from "@/lib/utils"
 import {
-  LayoutDashboard,
-  CalendarDays,
+  Calendar,
   Users,
-  Building2,
   Settings,
+  BarChart3,
   MessageSquare,
-  Bell,
+  MessageCircle,
   QrCode,
+  Bell,
+  TestTube,
+  Building2,
+  UserPlus,
   Clock,
-  Upload,
-  LayoutGrid,
-  BarChart,
+  Layout,
+  FileText,
+  Activity,
 } from "lucide-react"
 
-interface AdminSidebarProps {
-  activeTab: string
-  setActiveTab: (tab: string) => void
+interface SidebarProps {
+  activeTab?: string
 }
 
-export function AdminSidebar({ activeTab, setActiveTab }: AdminSidebarProps) {
+export function AdminSidebar({ activeTab }: SidebarProps) {
+  const pathname = usePathname()
+
   const menuItems = [
     {
-      id: "overview",
-      label: "Visão Geral",
-      icon: <LayoutDashboard className="h-5 w-5" />,
+      title: "Dashboard",
       href: "/admin/dashboard",
+      icon: BarChart3,
+      key: "dashboard",
     },
     {
-      id: "parties",
-      label: "Festas",
-      icon: <CalendarDays className="h-5 w-5" />,
-      href: "/admin/dashboard?tab=parties",
+      title: "Festas",
+      href: "/admin/parties",
+      icon: Calendar,
+      key: "parties",
     },
     {
-      id: "guests",
-      label: "Convidados",
-      icon: <Users className="h-5 w-5" />,
-      href: "/admin/dashboard?tab=guests",
+      title: "Convidados",
+      href: "/admin/guests",
+      icon: Users,
+      key: "guests",
     },
     {
-      id: "party-halls",
-      label: "Salões",
-      icon: <Building2 className="h-5 w-5" />,
-      href: "/admin/dashboard?tab=party-halls",
+      title: "Salões",
+      href: "/admin/party-halls",
+      icon: Building2,
+      key: "party-halls",
     },
     {
-      id: "notifications",
-      label: "Notificações",
-      icon: <Bell className="h-5 w-5" />,
-      href: "/admin/notifications",
-    },
-    {
-      id: "whatsapp",
-      label: "WhatsApp",
-      icon: <MessageSquare className="h-5 w-5" />,
-      href: "/admin/whatsapp",
-    },
-    // Novos itens de menu
-    {
-      id: "qr-codes",
-      label: "QR Codes",
-      icon: <QrCode className="h-5 w-5" />,
+      title: "QR Codes",
       href: "/admin/qr-codes",
+      icon: QrCode,
+      key: "qr-codes",
     },
     {
-      id: "reminders",
-      label: "Lembretes",
-      icon: <Clock className="h-5 w-5" />,
+      title: "SMS",
+      href: "/admin/sms",
+      icon: MessageSquare,
+      key: "sms",
+    },
+    {
+      title: "WhatsApp",
+      href: "/admin/whatsapp",
+      icon: MessageCircle,
+      key: "whatsapp",
+    },
+    {
+      title: "Lembretes",
       href: "/admin/reminders",
+      icon: Clock,
+      key: "reminders",
     },
     {
-      id: "contacts",
-      label: "Importar Contatos",
-      icon: <Upload className="h-5 w-5" />,
+      title: "Notificações",
+      href: "/admin/notifications",
+      icon: Bell,
+      key: "notifications",
+    },
+    {
+      title: "Minhas Notificações",
+      href: "/admin/my-notifications",
+      icon: Bell,
+      key: "my-notifications",
+    },
+    {
+      title: "Contatos",
       href: "/admin/contacts",
+      icon: UserPlus,
+      key: "contacts",
     },
     {
-      id: "layout-planner",
-      label: "Planejador de Layout",
-      icon: <LayoutGrid className="h-5 w-5" />,
+      title: "Layout da Mesa",
       href: "/admin/layout-planner",
+      icon: Layout,
+      key: "layout-planner",
     },
     {
-      id: "analytics",
-      label: "Analytics",
-      icon: <BarChart className="h-5 w-5" />,
+      title: "Relatórios",
       href: "/admin/analytics",
+      icon: FileText,
+      key: "analytics",
     },
     {
-      id: "settings",
-      label: "Configurações",
-      icon: <Settings className="h-5 w-5" />,
-      href: "/admin/dashboard?tab=settings",
+      title: "Centro de Testes",
+      href: "/admin/test-center",
+      icon: TestTube,
+      key: "test-center",
+    },
+    {
+      title: "Status do Sistema",
+      href: "/admin/system-status",
+      icon: Activity,
+      key: "system-status",
+    },
+    {
+      title: "Configurações",
+      href: "/admin/settings",
+      icon: Settings,
+      key: "settings",
     },
   ]
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 min-h-screen">
       <div className="p-6">
-        <h2 className="text-xl font-bold text-purple-800">Admin</h2>
-      </div>
-      <nav className="mt-2">
-        <ul>
-          {menuItems.map((item) => (
-            <li key={item.id}>
+        <h2 className="text-lg font-semibold text-purple-800 mb-6">Painel Administrativo</h2>
+
+        <nav className="space-y-2">
+          {menuItems.map((item) => {
+            const isActive = activeTab === item.key || pathname === item.href
+
+            return (
               <Link
+                key={item.key}
                 href={item.href}
-                className={`flex items-center px-6 py-3 text-gray-700 hover:bg-purple-50 hover:text-purple-700 ${
-                  activeTab === item.id ? "bg-purple-50 text-purple-700 border-r-4 border-purple-600" : ""
-                }`}
-                onClick={() => setActiveTab(item.id)}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                  isActive ? "bg-purple-100 text-purple-800" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
+                )}
               >
-                <span className="mr-3 text-gray-500">{item.icon}</span>
-                {item.label}
+                <item.icon className="h-4 w-4" />
+                {item.title}
               </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
+            )
+          })}
+        </nav>
+      </div>
     </aside>
   )
 }

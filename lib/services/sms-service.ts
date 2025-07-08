@@ -1,18 +1,31 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 
-// Função para enviar SMS via Twilio
-export async function sendSMS(to: string, message: string) {
+interface SMSMessage {
+  to: string
+  message: string
+  partyId?: string
+  guestId?: string
+}
+
+interface SMSResponse {
+  success: boolean
+  messageId?: string
+  error?: string
+}
+
+export async function sendSMS(data: SMSMessage): Promise<SMSResponse> {
   try {
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) {
+      throw new Error("Credenciais do Twilio não configuradas")
+    }
+
     const accountSid = process.env.TWILIO_ACCOUNT_SID
     const authToken = process.env.TWILIO_AUTH_TOKEN
     const fromNumber = process.env.TWILIO_PHONE_NUMBER
 
-    if (!accountSid || !authToken || !fromNumber) {
-      throw new Error("Credenciais do Twilio não configuradas")
-    }
-
+    // Enviar SMS via Twilio API
     const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
       method: "POST",
       headers: {
@@ -20,97 +33,85 @@ export async function sendSMS(to: string, message: string) {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        To: to,
         From: fromNumber,
-        Body: message,
+        To: data.to,
+        Body: data.message,
       }),
     })
 
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Erro ao enviar SMS: ${error}`)
-    }
-
     const result = await response.json()
 
+    if (!response.ok) {
+      throw new Error(result.message || "Erro ao enviar SMS")
+    }
+
     // Salvar no histórico
-    await saveSMSHistory(to, message, "sent", result.sid)
-
-    return { success: true, messageId: result.sid }
-  } catch (error) {
-    console.error("Erro ao enviar SMS:", error)
-    await saveSMSHistory(to, message, "failed", null, error instanceof Error ? error.message : "Erro desconhecido")
-    throw error
-  }
-}
-
-// Função para salvar histórico de SMS
-export async function saveSMSHistory(
-  phoneNumber: string,
-  message: string,
-  status: "sent" | "failed",
-  messageId: string | null,
-  errorMessage?: string,
-) {
-  try {
-    const supabase = createServerClient()
-
-    const { error } = await supabase.from("sms_history").insert({
-      phone_number: phoneNumber,
-      message,
-      status,
-      message_id: messageId,
-      error_message: errorMessage,
+    const supabase = await createServerSupabaseClient()
+    await supabase.from("sms_history").insert({
+      phone_number: data.to,
+      message: data.message,
+      party_id: data.partyId,
+      guest_id: data.guestId,
+      status: "sent",
+      twilio_sid: result.sid,
       sent_at: new Date().toISOString(),
     })
 
-    if (error) {
-      console.error("Erro ao salvar histórico SMS:", error)
+    return {
+      success: true,
+      messageId: result.sid,
     }
   } catch (error) {
-    console.error("Erro ao salvar histórico SMS:", error)
+    console.error("Erro ao enviar SMS:", error)
+
+    // Salvar erro no histórico
+    try {
+      const supabase = await createServerSupabaseClient()
+      await supabase.from("sms_history").insert({
+        phone_number: data.to,
+        message: data.message,
+        party_id: data.partyId,
+        guest_id: data.guestId,
+        status: "failed",
+        error_message: error instanceof Error ? error.message : "Erro desconhecido",
+        sent_at: new Date().toISOString(),
+      })
+    } catch (dbError) {
+      console.error("Erro ao salvar no histórico:", dbError)
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para buscar histórico de SMS
-export async function getSMSHistory(limit = 50) {
+export async function getSMSHistory(partyId?: string) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerSupabaseClient()
+    let query = supabase.from("sms_history").select("*").order("sent_at", { ascending: false })
 
-    const { data, error } = await supabase
-      .from("sms_history")
-      .select("*")
-      .order("sent_at", { ascending: false })
-      .limit(limit)
-
-    if (error) {
-      throw error
+    if (partyId) {
+      query = query.eq("party_id", partyId)
     }
 
-    return data || []
+    const { data, error } = await query
+
+    if (error) throw error
+
+    return { success: true, data }
   } catch (error) {
-    console.error("Erro ao buscar histórico SMS:", error)
-    return []
+    console.error("Erro ao buscar histórico de SMS:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
   }
 }
 
-// Função para enviar confirmação de presença via SMS
-export async function sendGuestConfirmationSMS(guestName: string, phoneNumber: string, partyName: string) {
-  const message = `Olá ${guestName}! Sua presença foi confirmada para a festa: ${partyName}. Obrigado!`
-  return await sendSMS(phoneNumber, message)
-}
-
-// Função para enviar lembrete via SMS
-export async function sendReminderSMS(guestName: string, phoneNumber: string, partyName: string, partyDate: string) {
-  const message = `Olá ${guestName}! Lembrete: A festa ${partyName} será em ${partyDate}. Te esperamos lá!`
-  return await sendSMS(phoneNumber, message)
-}
-
-// Exportar objeto SMSService para compatibilidade
+// Export do serviço
 export const SMSService = {
   sendSMS,
-  saveSMSHistory,
   getSMSHistory,
-  sendGuestConfirmationSMS,
-  sendReminderSMS,
 }
