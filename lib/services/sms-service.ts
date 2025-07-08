@@ -1,161 +1,86 @@
 "use server"
 
-import { createServerClient } from "../supabase/server"
-import type { Guest, Party } from "../types"
+import { createServerClient } from "@/lib/supabase/server"
 
-// Tipos para as mensagens SMS
-export type SMSMessage = {
-  to: string
-  body: string
-}
-
-export type SMSResponse = {
-  success: boolean
-  messageId?: string
-  error?: string
-}
-
-// Função auxiliar para formatar número de telefone
-function formatPhoneNumber(phoneNumber: string): string {
-  // Remover todos os caracteres não numéricos
-  const cleaned = phoneNumber.replace(/\D/g, "")
-
-  // Verificar se já tem o código do país
-  if (cleaned.startsWith("1")) {
-    return `+${cleaned}`
-  }
-
-  // Se começar com 55 (Brasil), adicionar o + na frente
-  if (cleaned.startsWith("55")) {
-    return `+${cleaned}`
-  }
-
-  // Adicionar código do Brasil (55) se não tiver
-  return `+55${cleaned}`
-}
-
-// Função auxiliar para enviar mensagem
-async function sendMessage(message: SMSMessage): Promise<SMSResponse> {
+// Função para enviar SMS via Twilio
+export async function sendSMS(to: string, message: string) {
   try {
-    const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID
-    const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN
-    const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER
+    const accountSid = process.env.TWILIO_ACCOUNT_SID
+    const authToken = process.env.TWILIO_AUTH_TOKEN
+    const fromNumber = process.env.TWILIO_PHONE_NUMBER
 
-    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    if (!accountSid || !authToken || !fromNumber) {
       throw new Error("Credenciais do Twilio não configuradas")
     }
 
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`
-    const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString("base64")
-
-    const formData = new URLSearchParams()
-    formData.append("To", message.to)
-    formData.append("From", TWILIO_PHONE_NUMBER)
-    formData.append("Body", message.body)
-
-    const response = await fetch(url, {
+    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
       method: "POST",
       headers: {
+        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
         "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${auth}`,
       },
-      body: formData.toString(),
+      body: new URLSearchParams({
+        To: to,
+        From: fromNumber,
+        Body: message,
+      }),
     })
 
-    const data = await response.json()
-
     if (!response.ok) {
-      throw new Error(data.message || "Erro ao enviar SMS")
+      const error = await response.text()
+      throw new Error(`Erro ao enviar SMS: ${error}`)
     }
 
-    // Registrar mensagem enviada no banco de dados
-    await logMessageToDatabase(message, data.sid)
+    const result = await response.json()
 
-    return {
-      success: true,
-      messageId: data.sid,
-    }
-  } catch (error: any) {
+    // Salvar no histórico
+    await saveSMSHistory(to, message, "sent", result.sid)
+
+    return { success: true, messageId: result.sid }
+  } catch (error) {
     console.error("Erro ao enviar SMS:", error)
-    return {
-      success: false,
-      error: error.message || "Erro desconhecido ao enviar SMS",
-    }
+    await saveSMSHistory(to, message, "failed", null, error instanceof Error ? error.message : "Erro desconhecido")
+    throw error
   }
 }
 
-// Função auxiliar para registrar no banco
-async function logMessageToDatabase(message: SMSMessage, messageId?: string): Promise<void> {
+// Função para salvar histórico de SMS
+export async function saveSMSHistory(
+  phoneNumber: string,
+  message: string,
+  status: "sent" | "failed",
+  messageId: string | null,
+  errorMessage?: string,
+) {
   try {
     const supabase = createServerClient()
 
-    await supabase.from("sms_messages").insert({
-      phone_number: message.to,
-      message_content: message.body,
-      message_id: messageId || null,
-      status: "sent",
+    const { error } = await supabase.from("sms_history").insert({
+      phone_number: phoneNumber,
+      message,
+      status,
+      message_id: messageId,
+      error_message: errorMessage,
+      sent_at: new Date().toISOString(),
     })
+
+    if (error) {
+      console.error("Erro ao salvar histórico SMS:", error)
+    }
   } catch (error) {
-    console.error("Erro ao registrar SMS no banco de dados:", error)
+    console.error("Erro ao salvar histórico SMS:", error)
   }
 }
 
-// Funções exportadas (todas async)
-export async function sendGuestConfirmation(guest: Guest, party: Party): Promise<SMSResponse> {
-  if (!guest.whatsapp) {
-    return { success: false, error: "Número de telefone não fornecido" }
-  }
-
-  // Formatar o número de telefone (remover caracteres não numéricos)
-  const phoneNumber = formatPhoneNumber(guest.whatsapp)
-
-  // Criar mensagem de confirmação
-  const message: SMSMessage = {
-    to: phoneNumber,
-    body: `Olá ${guest.nome_principal}, sua presença na festa de ${party.nome_aniversariante} foi confirmada! A festa será no dia ${new Date(party.data).toLocaleDateString("pt-BR")} às ${party.horario} no endereço: ${party.local_detalhado}. Agradecemos sua confirmação!`,
-  }
-
-  return sendMessage(message)
-}
-
-export async function sendGuestReminder(guest: Guest, party: Party): Promise<SMSResponse> {
-  if (!guest.whatsapp) {
-    return { success: false, error: "Número de telefone não fornecido" }
-  }
-
-  // Formatar o número de telefone
-  const phoneNumber = formatPhoneNumber(guest.whatsapp)
-
-  // Criar mensagem de lembrete
-  const message: SMSMessage = {
-    to: phoneNumber,
-    body: `Olá ${guest.nome_principal}, não esqueça da festa de ${party.nome_aniversariante} amanhã, dia ${new Date(party.data).toLocaleDateString("pt-BR")} às ${party.horario}. Esperamos você lá!`,
-  }
-
-  return sendMessage(message)
-}
-
-export async function sendCustomMessage(phoneNumber: string, message: string): Promise<SMSResponse> {
-  // Formatar o número de telefone
-  const formattedPhoneNumber = formatPhoneNumber(phoneNumber)
-
-  // Criar mensagem de texto simples
-  const smsMessage: SMSMessage = {
-    to: formattedPhoneNumber,
-    body: message,
-  }
-
-  return sendMessage(smsMessage)
-}
-
-export async function getMessageHistory(limit = 50): Promise<any[]> {
+// Função para buscar histórico de SMS
+export async function getSMSHistory(limit = 50) {
   try {
     const supabase = createServerClient()
 
     const { data, error } = await supabase
-      .from("sms_messages")
+      .from("sms_history")
       .select("*")
-      .order("created_at", { ascending: false })
+      .order("sent_at", { ascending: false })
       .limit(limit)
 
     if (error) {
@@ -164,7 +89,28 @@ export async function getMessageHistory(limit = 50): Promise<any[]> {
 
     return data || []
   } catch (error) {
-    console.error("Erro ao buscar histórico de SMS:", error)
+    console.error("Erro ao buscar histórico SMS:", error)
     return []
   }
+}
+
+// Função para enviar confirmação de presença via SMS
+export async function sendGuestConfirmationSMS(guestName: string, phoneNumber: string, partyName: string) {
+  const message = `Olá ${guestName}! Sua presença foi confirmada para a festa: ${partyName}. Obrigado!`
+  return await sendSMS(phoneNumber, message)
+}
+
+// Função para enviar lembrete via SMS
+export async function sendReminderSMS(guestName: string, phoneNumber: string, partyName: string, partyDate: string) {
+  const message = `Olá ${guestName}! Lembrete: A festa ${partyName} será em ${partyDate}. Te esperamos lá!`
+  return await sendSMS(phoneNumber, message)
+}
+
+// Exportar objeto SMSService para compatibilidade
+export const SMSService = {
+  sendSMS,
+  saveSMSHistory,
+  getSMSHistory,
+  sendGuestConfirmationSMS,
+  sendReminderSMS,
 }

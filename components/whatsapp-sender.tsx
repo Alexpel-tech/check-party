@@ -1,232 +1,37 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { AlertCircle, Send, MessageSquare, Loader2, CheckCircle } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { WhatsAppService } from "@/lib/services/whatsapp-service"
-import { PartySelector } from "@/components/party-selector"
-import { InvitationPreview } from "@/components/invitation-preview"
-import type { Guest, Party } from "@/lib/types"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
+import { Loader2, MessageCircle, Send } from "lucide-react"
+import {
+  sendGuestConfirmationWhatsApp,
+  sendReminderWhatsApp,
+  sendCustomWhatsAppMessage,
+} from "@/lib/services/whatsapp-service"
 
 interface WhatsAppSenderProps {
-  initialGuests?: Guest[]
-  initialParty?: Party
+  partyId?: string
+  guestName?: string
+  guestPhone?: string
+  partyName?: string
+  partyDate?: string
 }
 
-export function WhatsAppSender({ initialGuests, initialParty }: WhatsAppSenderProps) {
-  const [selectedTab, setSelectedTab] = useState("individual")
-  const [selectedGuest, setSelectedGuest] = useState<string>("")
-  const [phoneNumber, setPhoneNumber] = useState("")
+export function WhatsAppSender({ partyId, guestName, guestPhone, partyName, partyDate }: WhatsAppSenderProps) {
+  const [phoneNumber, setPhoneNumber] = useState(guestPhone || "")
   const [message, setMessage] = useState("")
-  const [messageTemplate, setMessageTemplate] = useState("custom")
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
   const { toast } = useToast()
 
-  const [party, setParty] = useState<Party | null>(initialParty || null)
-  const [guests, setGuests] = useState<Guest[]>(initialGuests || [])
-  const [selectedGuestObject, setSelectedGuestObject] = useState<Guest | null>(null)
-
-  // Atualizar mensagem quando o template mudar
-  useEffect(() => {
-    if (messageTemplate === "confirmation" && party) {
-      setMessage(
-        `Olá [nome do convidado], sua presença na festa de [nome do aniversariante] foi confirmada! A festa será no dia [data] às [hora] no endereço: [local]. Agradecemos sua confirmação!`,
-      )
-    } else if (messageTemplate === "reminder" && party) {
-      setMessage(
-        `Olá [nome do convidado], não esqueça da festa de [nome do aniversariante] amanhã, dia [data] às [hora]. Esperamos você lá!`,
-      )
-    }
-  }, [messageTemplate, party])
-
-  // Atualizar o objeto do convidado selecionado quando o ID mudar
-  useEffect(() => {
-    if (selectedGuest && guests.length > 0) {
-      const guest = guests.find((g) => g.id === selectedGuest)
-      setSelectedGuestObject(guest || null)
-    } else {
-      setSelectedGuestObject(null)
-    }
-  }, [selectedGuest, guests])
-
-  // Função para lidar com a seleção de festa
-  const handlePartySelect = (selectedParty: Party, partyGuests: Guest[]) => {
-    setParty(selectedParty)
-    setGuests(partyGuests)
-
-    // Resetar seleção de convidado
-    setSelectedGuest("")
-    setSelectedGuestObject(null)
-
-    // Atualizar mensagem com base no template
-    if (messageTemplate === "confirmation") {
-      setMessage(
-        `Olá [nome do convidado], sua presença na festa de ${selectedParty.nome_aniversariante} foi confirmada! A festa será no dia [data] às ${selectedParty.horario} no endereço: ${selectedParty.local_detalhado}. Agradecemos sua confirmação!`,
-      )
-    } else if (messageTemplate === "reminder") {
-      setMessage(
-        `Olá [nome do convidado], não esqueça da festa de ${selectedParty.nome_aniversariante} amanhã, dia [data] às ${selectedParty.horario}. Esperamos você lá!`,
-      )
-    }
-  }
-
-  // Enviar mensagem individual
-  const handleSendIndividual = async () => {
-    setIsLoading(true)
-    setError("")
-    setSuccess("")
-
-    try {
-      if (!party) {
-        throw new Error("Selecione uma festa primeiro")
-      }
-
-      if (!phoneNumber && !selectedGuest) {
-        throw new Error("Selecione um convidado ou informe um número de telefone")
-      }
-
-      if (!message.trim()) {
-        throw new Error("Digite uma mensagem para enviar")
-      }
-
-      let result
-
-      // Se for um convidado selecionado
-      if (selectedGuest) {
-        const guest = guests?.find((g) => g.id === selectedGuest)
-
-        if (!guest) {
-          throw new Error("Convidado não encontrado")
-        }
-
-        if (!guest.whatsapp) {
-          throw new Error("Este convidado não possui número de WhatsApp cadastrado")
-        }
-
-        // Processar a mensagem para substituir placeholders
-        const processedMessage = message
-          .replace(/\[nome do convidado\]/gi, guest.nome_principal)
-          .replace(/\[nome do aniversariante\]/gi, party.nome_aniversariante)
-          .replace(/\[data\]/gi, new Date(party.data).toLocaleDateString("pt-BR"))
-          .replace(/\[hora\]/gi, party.horario)
-          .replace(/\[local\]/gi, party.local_detalhado)
-          .replace(/\[tema\]/gi, party.theme)
-
-        result = await WhatsAppService.sendCustomMessage(guest.whatsapp, processedMessage)
-      } else {
-        // Envio para número personalizado
-        result = await WhatsAppService.sendCustomMessage(phoneNumber, message)
-      }
-
-      if (!result.success) {
-        throw new Error(result.error || "Erro ao enviar mensagem")
-      }
-
-      setSuccess("Mensagem enviada com sucesso!")
-
-      // Limpar campos se for número personalizado
-      if (!selectedGuest) {
-        setPhoneNumber("")
-      }
-    } catch (error: any) {
-      setError(error.message || "Ocorreu um erro ao enviar a mensagem")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // Enviar mensagem em massa
-  const handleSendBulk = async () => {
-    setIsLoading(true)
-    setError("")
-    setSuccess("")
-
-    try {
-      if (!party) {
-        throw new Error("Selecione uma festa primeiro")
-      }
-
-      if (!guests || guests.length === 0) {
-        throw new Error("Não há convidados para enviar mensagens")
-      }
-
-      if (!message.trim()) {
-        throw new Error("Digite uma mensagem para enviar")
-      }
-
-      // Filtrar convidados com número de WhatsApp
-      const guestsWithWhatsApp = guests.filter((guest) => guest.whatsapp)
-
-      if (guestsWithWhatsApp.length === 0) {
-        throw new Error("Nenhum convidado possui número de WhatsApp cadastrado")
-      }
-
-      // Confirmar envio em massa
-      if (
-        !window.confirm(
-          `Você está prestes a enviar mensagens para ${guestsWithWhatsApp.length} convidados. Deseja continuar?`,
-        )
-      ) {
-        setIsLoading(false)
-        return
-      }
-
-      let successCount = 0
-      let errorCount = 0
-
-      // Enviar mensagens para cada convidado
-      for (const guest of guestsWithWhatsApp) {
-        try {
-          // Processar a mensagem para substituir placeholders
-          const processedMessage = message
-            .replace(/\[nome do convidado\]/gi, guest.nome_principal)
-            .replace(/\[nome do aniversariante\]/gi, party.nome_aniversariante)
-            .replace(/\[data\]/gi, new Date(party.data).toLocaleDateString("pt-BR"))
-            .replace(/\[hora\]/gi, party.horario)
-            .replace(/\[local\]/gi, party.local_detalhado)
-            .replace(/\[tema\]/gi, party.theme)
-
-          const result = await WhatsAppService.sendCustomMessage(guest.whatsapp!, processedMessage)
-
-          if (result.success) {
-            successCount++
-          } else {
-            errorCount++
-          }
-
-          // Pequeno delay para evitar limitações de API
-          await new Promise((resolve) => setTimeout(resolve, 300))
-        } catch (error) {
-          errorCount++
-        }
-      }
-
-      setSuccess(`Mensagens enviadas: ${successCount} com sucesso, ${errorCount} com erro.`)
-    } catch (error: any) {
-      setError(error.message || "Ocorreu um erro ao enviar as mensagens")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const handleSendMessage = async () => {
     if (!phoneNumber || !message) {
       toast({
-        title: "Campos obrigatórios",
+        title: "Erro",
         description: "Por favor, preencha o número de telefone e a mensagem.",
         variant: "destructive",
       })
@@ -234,27 +39,77 @@ export function WhatsAppSender({ initialGuests, initialParty }: WhatsAppSenderPr
     }
 
     setIsLoading(true)
-
     try {
-      const result = await WhatsAppService.sendCustomMessage(phoneNumber, message)
-
-      if (result.success) {
-        toast({
-          title: "Mensagem enviada",
-          description: "A mensagem foi enviada com sucesso.",
-        })
-        setMessage("")
-      } else {
-        toast({
-          title: "Erro ao enviar mensagem",
-          description: result.error || "Ocorreu um erro ao enviar a mensagem.",
-          variant: "destructive",
-        })
+      await sendCustomWhatsAppMessage(phoneNumber, message)
+      toast({
+        title: "Mensagem enviada!",
+        description: "A mensagem WhatsApp foi enviada com sucesso.",
+      })
+      setMessage("")
+      if (!guestPhone) {
+        setPhoneNumber("")
       }
     } catch (error) {
       toast({
         title: "Erro ao enviar mensagem",
-        description: "Ocorreu um erro ao enviar a mensagem.",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSendConfirmation = async () => {
+    if (!guestName || !phoneNumber || !partyName) {
+      toast({
+        title: "Erro",
+        description: "Dados insuficientes para enviar confirmação.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      await sendGuestConfirmationWhatsApp(guestName, phoneNumber, partyName)
+      toast({
+        title: "Confirmação enviada!",
+        description: "Mensagem de confirmação enviada via WhatsApp.",
+      })
+    } catch (error) {
+      toast({
+        title: "Erro ao enviar confirmação",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSendReminder = async () => {
+    if (!guestName || !phoneNumber || !partyName || !partyDate) {
+      toast({
+        title: "Erro",
+        description: "Dados insuficientes para enviar lembrete.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const formattedDate = new Date(partyDate).toLocaleDateString("pt-BR")
+      await sendReminderWhatsApp(guestName, phoneNumber, partyName, formattedDate)
+      toast({
+        title: "Lembrete enviado!",
+        description: "Lembrete enviado via WhatsApp com sucesso.",
+      })
+    } catch (error) {
+      toast({
+        title: "Erro ao enviar lembrete",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
         variant: "destructive",
       })
     } finally {
@@ -265,183 +120,70 @@ export function WhatsAppSender({ initialGuests, initialParty }: WhatsAppSenderPr
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center">
-          <MessageSquare className="h-5 w-5 mr-2" />
+        <CardTitle className="flex items-center gap-2">
+          <MessageCircle className="h-5 w-5 text-green-600" />
           Enviar WhatsApp
         </CardTitle>
-        <CardDescription>Envie mensagens WhatsApp para convidados da festa</CardDescription>
+        <CardDescription>Envie mensagens via WhatsApp Business API</CardDescription>
       </CardHeader>
-      <CardContent>
-        {/* Seletor de festa */}
-        <PartySelector onPartySelect={handlePartySelect} className="mb-6" />
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="whatsapp-phone">Número de Telefone</Label>
+          <Input
+            id="whatsapp-phone"
+            type="tel"
+            placeholder="5511999999999"
+            value={phoneNumber}
+            onChange={(e) => setPhoneNumber(e.target.value)}
+            disabled={!!guestPhone}
+          />
+          <p className="text-sm text-muted-foreground">Formato: código do país + DDD + número (ex: 5511999999999)</p>
+        </div>
 
-        {party && (
-          <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="individual">Mensagem Individual</TabsTrigger>
-              <TabsTrigger value="bulk">Mensagem em Massa</TabsTrigger>
-            </TabsList>
+        <div className="space-y-2">
+          <Label htmlFor="whatsapp-message">Mensagem</Label>
+          <Textarea
+            id="whatsapp-message"
+            placeholder="Digite sua mensagem..."
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={4}
+          />
+        </div>
 
-            <TabsContent value="individual" className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="recipient">Destinatário</Label>
-                <Select value={selectedGuest} onValueChange={setSelectedGuest}>
-                  <SelectTrigger id="recipient">
-                    <SelectValue placeholder="Selecione um convidado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="custom_number">Número personalizado</SelectItem>
-                    {guests?.map((guest) => (
-                      <SelectItem key={guest.id} value={guest.id} disabled={!guest.whatsapp}>
-                        {guest.nome_principal} {!guest.whatsapp && "(Sem WhatsApp)"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={handleSendMessage}
+            disabled={isLoading || !phoneNumber || !message}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+          >
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            Enviar WhatsApp
+          </Button>
 
-              {(!selectedGuest || selectedGuest === "custom_number") && (
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Número de WhatsApp</Label>
-                  <Input
-                    id="phone"
-                    placeholder="(00) 00000-0000"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    required
-                  />
-                  <p className="text-xs text-gray-500">Formato: DDD + número</p>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="template">Tipo de Mensagem</Label>
-                <Select value={messageTemplate} onValueChange={setMessageTemplate}>
-                  <SelectTrigger id="template">
-                    <SelectValue placeholder="Selecione um template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="custom">Mensagem Personalizada</SelectItem>
-                    <SelectItem value="confirmation">Confirmação de Presença</SelectItem>
-                    <SelectItem value="reminder">Lembrete de Festa</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="message">Mensagem</Label>
-                <Textarea
-                  id="message"
-                  placeholder="Digite sua mensagem..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows={4}
-                  required
-                />
-                <p className="text-xs text-gray-500">
-                  Você pode usar [nome do convidado], [nome do aniversariante], [data], [hora], [local] e [tema] como
-                  placeholders.
-                </p>
-              </div>
-
-              {/* Pré-visualização do convite */}
-              <InvitationPreview party={party} guest={selectedGuestObject} message={message} type="whatsapp" />
-
-              {error && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              {success && (
-                <Alert variant="success" className="bg-green-50 border-green-200 text-green-800">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  <AlertDescription>{success}</AlertDescription>
-                </Alert>
-              )}
-            </TabsContent>
-
-            <TabsContent value="bulk" className="space-y-4">
-              <div className="p-4 bg-yellow-50 rounded-md border border-yellow-200">
-                <h3 className="font-medium text-yellow-800 mb-2">Envio em Massa</h3>
-                <p className="text-sm text-yellow-700">
-                  Esta opção enviará mensagens para todos os convidados que possuem WhatsApp cadastrado (
-                  {guests?.filter((g) => g.whatsapp).length || 0} de {guests?.length || 0} convidados).
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bulk-template">Tipo de Mensagem</Label>
-                <Select value={messageTemplate} onValueChange={setMessageTemplate}>
-                  <SelectTrigger id="bulk-template">
-                    <SelectValue placeholder="Selecione um template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="custom">Mensagem Personalizada</SelectItem>
-                    <SelectItem value="confirmation">Confirmação de Presença</SelectItem>
-                    <SelectItem value="reminder">Lembrete de Festa</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bulk-message">Mensagem</Label>
-                <Textarea
-                  id="bulk-message"
-                  placeholder="Digite sua mensagem..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows={4}
-                  required
-                />
-                <p className="text-xs text-gray-500">
-                  Você pode usar [nome do convidado], [nome do aniversariante], [data], [hora], [local] e [tema] como
-                  placeholders.
-                </p>
-              </div>
-
-              {/* Exemplo de como a mensagem ficará para um convidado */}
-              {guests.length > 0 && (
-                <InvitationPreview party={party} guest={guests[0]} message={message} type="whatsapp" />
-              )}
-
-              {error && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              {success && (
-                <Alert variant="success" className="bg-green-50 border-green-200 text-green-800">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  <AlertDescription>{success}</AlertDescription>
-                </Alert>
-              )}
-            </TabsContent>
-          </Tabs>
-        )}
-      </CardContent>
-      <CardFooter>
-        <Button
-          className="w-full bg-green-600 hover:bg-green-700"
-          onClick={selectedTab === "individual" ? handleSendIndividual : handleSendBulk}
-          disabled={isLoading || !party}
-        >
-          {isLoading ? (
-            <span className="flex items-center">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Enviando...
-            </span>
-          ) : (
-            <span className="flex items-center">
-              <Send className="mr-2 h-4 w-4" />
-              Enviar WhatsApp
-            </span>
+          {guestName && partyName && (
+            <Button
+              variant="outline"
+              onClick={handleSendConfirmation}
+              disabled={isLoading || !phoneNumber}
+              className="border-green-600 text-green-600 hover:bg-green-50 bg-transparent"
+            >
+              Enviar Confirmação
+            </Button>
           )}
-        </Button>
-      </CardFooter>
+
+          {guestName && partyName && partyDate && (
+            <Button
+              variant="outline"
+              onClick={handleSendReminder}
+              disabled={isLoading || !phoneNumber}
+              className="border-green-600 text-green-600 hover:bg-green-50 bg-transparent"
+            >
+              Enviar Lembrete
+            </Button>
+          )}
+        </div>
+      </CardContent>
     </Card>
   )
 }

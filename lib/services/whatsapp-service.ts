@@ -1,235 +1,88 @@
 "use server"
 
-import { createServerClient } from "../supabase/server"
-import type { Guest, Party } from "../types"
+import { createServerClient } from "@/lib/supabase/server"
 
-// Tipos para as mensagens do WhatsApp
-export type WhatsAppTemplate = {
-  name: string
-  language: {
-    code: string
-  }
-  components: {
-    type: string
-    parameters: any[]
-  }[]
-}
-
-export type WhatsAppMessage = {
-  messaging_product: string
-  recipient_type: string
-  to: string
-  type: string
-  template?: WhatsAppTemplate
-  text?: {
-    body: string
-  }
-}
-
-export type WhatsAppResponse = {
-  success: boolean
-  messageId?: string
-  error?: string
-}
-
-// Funções auxiliares privadas (não exportadas)
-async function sendMessage(message: WhatsAppMessage): Promise<WhatsAppResponse> {
+// Função para enviar mensagem via WhatsApp Business API
+export async function sendWhatsAppMessage(to: string, message: string) {
   try {
-    const WHATSAPP_API_URL = "https://graph.facebook.com/v17.0"
-    const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID
-    const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
 
-    if (!WHATSAPP_PHONE_NUMBER_ID || !WHATSAPP_ACCESS_TOKEN) {
+    if (!phoneNumberId || !accessToken) {
       throw new Error("Credenciais do WhatsApp não configuradas")
     }
 
-    const response = await fetch(`${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    const response = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
       },
-      body: JSON.stringify(message),
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: to,
+        type: "text",
+        text: {
+          body: message,
+        },
+      }),
     })
 
-    const data = await response.json()
-
     if (!response.ok) {
-      throw new Error(data.error?.message || "Erro ao enviar mensagem")
+      const error = await response.text()
+      throw new Error(`Erro ao enviar WhatsApp: ${error}`)
     }
 
-    // Registrar mensagem enviada no banco de dados
-    await logMessageToDatabase(message, data.messages?.[0]?.id)
+    const result = await response.json()
 
-    return {
-      success: true,
-      messageId: data.messages?.[0]?.id,
-    }
-  } catch (error: any) {
-    console.error("Erro ao enviar mensagem WhatsApp:", error)
-    return {
-      success: false,
-      error: error.message || "Erro desconhecido ao enviar mensagem",
-    }
+    // Salvar no histórico
+    await saveWhatsAppHistory(to, message, "sent", result.messages?.[0]?.id)
+
+    return { success: true, messageId: result.messages?.[0]?.id }
+  } catch (error) {
+    console.error("Erro ao enviar WhatsApp:", error)
+    await saveWhatsAppHistory(to, message, "failed", null, error instanceof Error ? error.message : "Erro desconhecido")
+    throw error
   }
 }
 
-async function logMessageToDatabase(message: WhatsAppMessage, messageId?: string): Promise<void> {
+// Função para salvar histórico de WhatsApp
+export async function saveWhatsAppHistory(
+  phoneNumber: string,
+  message: string,
+  status: "sent" | "failed",
+  messageId: string | null,
+  errorMessage?: string,
+) {
   try {
     const supabase = createServerClient()
 
-    await supabase.from("whatsapp_messages").insert({
-      phone_number: message.to,
-      message_type: message.type,
-      message_content: message.text?.body || JSON.stringify(message.template),
-      message_id: messageId || null,
-      status: "sent",
+    const { error } = await supabase.from("whatsapp_history").insert({
+      phone_number: phoneNumber,
+      message,
+      status,
+      message_id: messageId,
+      error_message: errorMessage,
+      sent_at: new Date().toISOString(),
     })
+
+    if (error) {
+      console.error("Erro ao salvar histórico WhatsApp:", error)
+    }
   } catch (error) {
-    console.error("Erro ao registrar mensagem no banco de dados:", error)
+    console.error("Erro ao salvar histórico WhatsApp:", error)
   }
 }
 
-function formatPhoneNumber(phoneNumber: string): string {
-  // Remover todos os caracteres não numéricos
-  const cleaned = phoneNumber.replace(/\D/g, "")
-
-  // Verificar se já tem o código do país
-  if (cleaned.startsWith("55")) {
-    return cleaned
-  }
-
-  // Adicionar código do Brasil (55) se não tiver
-  return `55${cleaned}`
-}
-
-// Funções exportadas
-export async function sendGuestConfirmation(guest: Guest, party: Party): Promise<WhatsAppResponse> {
-  if (!guest.whatsapp) {
-    return { success: false, error: "Número de WhatsApp não fornecido" }
-  }
-
-  // Formatar o número de telefone (remover caracteres não numéricos)
-  const phoneNumber = formatPhoneNumber(guest.whatsapp)
-
-  // Criar mensagem usando template
-  const message: WhatsAppMessage = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to: phoneNumber,
-    type: "template",
-    template: {
-      name: "guest_confirmation",
-      language: {
-        code: "pt_BR",
-      },
-      components: [
-        {
-          type: "body",
-          parameters: [
-            {
-              type: "text",
-              text: guest.nome_principal,
-            },
-            {
-              type: "text",
-              text: party.nome_aniversariante,
-            },
-            {
-              type: "text",
-              text: new Date(party.data).toLocaleDateString("pt-BR"),
-            },
-            {
-              type: "text",
-              text: party.horario,
-            },
-            {
-              type: "text",
-              text: party.local_detalhado,
-            },
-          ],
-        },
-      ],
-    },
-  }
-
-  return sendMessage(message)
-}
-
-export async function sendGuestReminder(guest: Guest, party: Party): Promise<WhatsAppResponse> {
-  if (!guest.whatsapp) {
-    return { success: false, error: "Número de WhatsApp não fornecido" }
-  }
-
-  // Formatar o número de telefone
-  const phoneNumber = formatPhoneNumber(guest.whatsapp)
-
-  // Criar mensagem usando template
-  const message: WhatsAppMessage = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to: phoneNumber,
-    type: "template",
-    template: {
-      name: "guest_reminder",
-      language: {
-        code: "pt_BR",
-      },
-      components: [
-        {
-          type: "body",
-          parameters: [
-            {
-              type: "text",
-              text: guest.nome_principal,
-            },
-            {
-              type: "text",
-              text: party.nome_aniversariante,
-            },
-            {
-              type: "text",
-              text: new Date(party.data).toLocaleDateString("pt-BR"),
-            },
-            {
-              type: "text",
-              text: party.horario,
-            },
-          ],
-        },
-      ],
-    },
-  }
-
-  return sendMessage(message)
-}
-
-export async function sendCustomMessage(phoneNumber: string, message: string): Promise<WhatsAppResponse> {
-  // Formatar o número de telefone
-  const formattedPhoneNumber = formatPhoneNumber(phoneNumber)
-
-  // Criar mensagem de texto simples
-  const whatsappMessage: WhatsAppMessage = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to: formattedPhoneNumber,
-    type: "text",
-    text: {
-      body: message,
-    },
-  }
-
-  return sendMessage(whatsappMessage)
-}
-
-export async function getMessageHistory(limit = 50): Promise<any[]> {
+// Função para buscar histórico de WhatsApp
+export async function getWhatsAppHistory(limit = 50) {
   try {
     const supabase = createServerClient()
 
     const { data, error } = await supabase
-      .from("whatsapp_messages")
+      .from("whatsapp_history")
       .select("*")
-      .order("created_at", { ascending: false })
+      .order("sent_at", { ascending: false })
       .limit(limit)
 
     if (error) {
@@ -238,15 +91,39 @@ export async function getMessageHistory(limit = 50): Promise<any[]> {
 
     return data || []
   } catch (error) {
-    console.error("Erro ao buscar histórico de mensagens:", error)
+    console.error("Erro ao buscar histórico WhatsApp:", error)
     return []
   }
 }
 
-// Namespace para compatibilidade com código existente
+// Função para enviar confirmação de presença via WhatsApp
+export async function sendGuestConfirmationWhatsApp(guestName: string, phoneNumber: string, partyName: string) {
+  const message = `🎉 Olá ${guestName}!\n\nSua presença foi confirmada para a festa:\n*${partyName}*\n\nObrigado! 🎈`
+  return await sendWhatsAppMessage(phoneNumber, message)
+}
+
+// Função para enviar lembrete via WhatsApp
+export async function sendReminderWhatsApp(
+  guestName: string,
+  phoneNumber: string,
+  partyName: string,
+  partyDate: string,
+) {
+  const message = `🎊 Olá ${guestName}!\n\n📅 *Lembrete importante:*\nA festa *${partyName}* será em *${partyDate}*\n\nTe esperamos lá! 🎉`
+  return await sendWhatsAppMessage(phoneNumber, message)
+}
+
+// Função para enviar mensagem personalizada
+export async function sendCustomWhatsAppMessage(phoneNumber: string, message: string) {
+  return await sendWhatsAppMessage(phoneNumber, message)
+}
+
+// Exportar objeto WhatsAppService para compatibilidade
 export const WhatsAppService = {
-  sendGuestConfirmation,
-  sendGuestReminder,
-  sendCustomMessage,
-  getMessageHistory,
+  sendWhatsAppMessage,
+  saveWhatsAppHistory,
+  getWhatsAppHistory,
+  sendGuestConfirmationWhatsApp,
+  sendReminderWhatsApp,
+  sendCustomWhatsAppMessage,
 }
