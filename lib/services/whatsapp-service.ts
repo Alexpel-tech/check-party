@@ -178,11 +178,3 @@ export async function sendConfirmationThankYou(
     type: "text",
   })
 }
-
-// Export do serviço
-export const WhatsAppService = {
-  sendWhatsAppMessage,
-  getWhatsAppHistory,
-  sendConfirmationReminder,
-  sendConfirmationThankYou,
-}

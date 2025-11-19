@@ -5,8 +5,16 @@ import {
   scheduleReminders,
   processPendingReminders,
   getReminderJobs,
-  ReminderService,
 } from "@/lib/services/reminder-service"
+
+export const ReminderService = {
+  createReminderConfig,
+  updateReminderConfig,
+  getReminderConfigs,
+  scheduleReminders,
+  processPendingReminders,
+  getReminderJobs,
+}
 
 // Adapter functions for client components
 export async function createReminderConfigAdapter(config: {
@@ -38,6 +46,3 @@ export async function processPendingRemindersAdapter() {
 export async function getReminderJobsAdapter(partyId?: string) {
   return await getReminderJobs(partyId)
 }
-
-// Export the service for compatibility
-export { ReminderService }

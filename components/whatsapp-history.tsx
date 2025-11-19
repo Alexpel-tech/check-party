@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, MessageSquare, RefreshCw } from "lucide-react"
-import { WhatsAppService } from "@/lib/services/whatsapp-service"
+import { Loader2, MessageSquare, RefreshCw } from 'lucide-react'
+import { WhatsAppService } from "@/lib/adapters/whatsapp-service-adapter"
 
 export function WhatsAppHistory() {
   const [messages, setMessages] = useState<any[]>([])

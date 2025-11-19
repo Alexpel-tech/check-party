@@ -3,7 +3,6 @@ import {
   getWhatsAppHistory,
   sendConfirmationReminder,
   sendConfirmationThankYou,
-  WhatsAppService,
 } from "@/lib/services/whatsapp-service"
 
 // Adapter functions for client components
@@ -44,5 +43,9 @@ export async function sendConfirmationThankYouAdapter(
   return await sendConfirmationThankYou(to, guestName, partyName, partyId, guestId)
 }
 
-// Export the service for compatibility
-export { WhatsAppService }
+export const WhatsAppService = {
+  sendWhatsAppMessage,
+  getWhatsAppHistory,
+  sendConfirmationReminder,
+  sendConfirmationThankYou,
+}

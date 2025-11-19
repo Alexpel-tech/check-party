@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Loader2, Clock, MessageSquare, Phone, Mail, Plus, Trash2, AlertCircle, CheckCircle } from "lucide-react"
-import { ReminderService } from "@/lib/services/reminder-service"
+import { Loader2, Clock, MessageSquare, Phone, Mail, Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react'
+import { ReminderService } from "@/lib/adapters/reminder-service-adapter"
 import type { Party, ReminderConfig, ReminderLog } from "@/lib/types"
 
 interface ReminderConfigProps {

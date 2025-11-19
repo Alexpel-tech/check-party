@@ -1,4 +1,4 @@
-import { sendSMS, getSMSHistory, SMSService } from "@/lib/services/sms-service"
+import { sendSMS, getSMSHistory } from "@/lib/services/sms-service"
 
 // Adapter functions for client components
 export async function sendSMSAdapter(data: {
@@ -15,4 +15,7 @@ export async function getSMSHistoryAdapter(partyId?: string) {
 }
 
 // Export the service for compatibility
-export { SMSService }
+export const SMSService = {
+  sendSMS,
+  getSMSHistory,
+}

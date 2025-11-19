@@ -4,13 +4,13 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Clock, AlertCircle, CheckCircle } from "lucide-react"
+import { Loader2, Clock, AlertCircle, CheckCircle } from 'lucide-react'
 import { AdminHeader } from "@/components/admin-header"
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { ReminderConfigComponent } from "@/components/reminders/reminder-config"
 import { PartySelector } from "@/components/party-selector"
 import { getParties } from "@/lib/actions/parties"
-import { ReminderService } from "@/lib/services/reminder-service"
+import { ReminderService } from "@/lib/adapters/reminder-service-adapter"
 import type { Party } from "@/lib/types"
 
 export default function RemindersPage() {

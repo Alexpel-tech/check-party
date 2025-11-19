@@ -292,13 +292,3 @@ export async function getReminderJobs(partyId?: string) {
     }
   }
 }
-
-// Export do serviço
-export const ReminderService = {
-  createReminderConfig,
-  updateReminderConfig,
-  getReminderConfigs,
-  scheduleReminders,
-  processPendingReminders,
-  getReminderJobs,
-}

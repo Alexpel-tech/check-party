@@ -110,8 +110,8 @@ export async function getSMSHistory(partyId?: string) {
   }
 }
 
-// Export do serviço
+// Export namespace for compatibility (this is allowed in "use server" files)
 export const SMSService = {
   sendSMS,
   getSMSHistory,
-}
+} as const
