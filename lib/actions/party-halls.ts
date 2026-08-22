@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache"
 
 // Buscar todos os salões de festa
 export async function getPartyHalls(): Promise<PartyHall[]> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   const { data, error } = await supabase.from("party_halls").select("*").order("name")
 
@@ -20,7 +20,7 @@ export async function getPartyHalls(): Promise<PartyHall[]> {
 
 // Buscar um salão de festa por ID
 export async function getPartyHallById(id: string): Promise<PartyHall | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   const { data, error } = await supabase.from("party_halls").select("*").eq("id", id).single()
 
@@ -34,7 +34,7 @@ export async function getPartyHallById(id: string): Promise<PartyHall | null> {
 
 // Criar um novo salão de festa
 export async function createPartyHall(partyHall: NewPartyHall): Promise<PartyHall | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   const { data, error } = await supabase.from("party_halls").insert(partyHall).select().single()
 
@@ -49,7 +49,7 @@ export async function createPartyHall(partyHall: NewPartyHall): Promise<PartyHal
 
 // Atualizar um salão de festa
 export async function updatePartyHall(id: string, partyHall: Partial<PartyHall>): Promise<PartyHall | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   const { data, error } = await supabase
     .from("party_halls")
@@ -69,7 +69,7 @@ export async function updatePartyHall(id: string, partyHall: Partial<PartyHall>)
 
 // Excluir um salão de festa
 export async function deletePartyHall(id: string): Promise<boolean> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   const { error } = await supabase.from("party_halls").delete().eq("id", id)
 

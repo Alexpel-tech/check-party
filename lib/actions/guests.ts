@@ -7,7 +7,7 @@ import { NotificationService } from "../adapters/notification-service-adapter"
 
 // Buscar todos os convidados
 export async function getGuests(): Promise<Guest[]> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase.from("guests").select("*").order("data_envio_formulario", { ascending: false })
   if (error) {
     console.error("Erro ao buscar convidados:", error)
@@ -18,7 +18,7 @@ export async function getGuests(): Promise<Guest[]> {
 
 // Buscar convidados por festa
 export async function getGuestsByParty(partyId: string): Promise<Guest[]> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase
     .from("guests")
     .select("*")
@@ -33,7 +33,7 @@ export async function getGuestsByParty(partyId: string): Promise<Guest[]> {
 
 // Buscar um convidado por ID
 export async function getGuestById(id: string): Promise<Guest | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase.from("guests").select("*").eq("id", id).single()
   if (error) {
     console.error("Erro ao buscar convidado:", error)
@@ -44,7 +44,7 @@ export async function getGuestById(id: string): Promise<Guest | null> {
 
 // Criar um novo convidado
 export async function createGuest(guest: NewGuest): Promise<Guest | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase.from("guests").insert(guest).select().single()
   if (error) {
     console.error("Erro ao criar convidado:", error)
@@ -56,7 +56,7 @@ export async function createGuest(guest: NewGuest): Promise<Guest | null> {
 
 // Atualizar um convidado
 export async function updateGuest(id: string, guest: Partial<Guest>): Promise<Guest | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase
     .from("guests")
     .update({ ...guest, updated_at: new Date().toISOString() })
@@ -73,7 +73,7 @@ export async function updateGuest(id: string, guest: Partial<Guest>): Promise<Gu
 
 // Atualizar status de confirmação dos pais
 export async function updateParentConfirmation(id: string, status: boolean): Promise<Guest | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase
     .from("guests")
     .update({
@@ -93,7 +93,7 @@ export async function updateParentConfirmation(id: string, status: boolean): Pro
 
 // Atualizar status de confirmação final
 export async function updateFinalConfirmation(id: string, status: boolean): Promise<Guest | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data: guestData, error } = await supabase
     .from("guests")
     .update({
@@ -142,7 +142,7 @@ export async function updateFinalConfirmation(id: string, status: boolean): Prom
 
 // Excluir um convidado
 export async function deleteGuest(id: string): Promise<boolean> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { error } = await supabase.from("guests").delete().eq("id", id)
   if (error) {
     console.error("Erro ao excluir convidado:", error)

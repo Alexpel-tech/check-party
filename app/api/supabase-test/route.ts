@@ -3,7 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 
 export async function GET() {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
 
     // Tenta fazer uma consulta simples
     const { data, error } = await supabase.from("guests").select("id").limit(1)

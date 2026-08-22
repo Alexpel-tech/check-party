@@ -10,7 +10,7 @@ import * as bcrypt from "bcryptjs"
 export async function createPartyParent(
   partyParent: Omit<NewPartyParent, "password"> & { password: string },
 ): Promise<PartyParent | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   // Hash da senha antes de armazenar
   const hashedPassword = await bcrypt.hash(partyParent.password, 10)
@@ -35,7 +35,7 @@ export async function createPartyParent(
 
 // Verificar credenciais dos pais
 export async function verifyParentCredentials(credentials: ParentLoginCredentials): Promise<ParentSession | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   // Buscar usuário pelo username
   const { data: parent, error } = await supabase

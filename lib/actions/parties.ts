@@ -8,7 +8,7 @@ import { createPartyParent, generateParentUsername, generateRandomPassword } fro
 
 // Buscar todas as festas
 export async function getParties(): Promise<Party[]> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase.from("parties").select("*").order("data")
   if (error) {
     console.error("Erro ao buscar festas:", error)
@@ -19,7 +19,7 @@ export async function getParties(): Promise<Party[]> {
 
 // Buscar festas com contagem de convidados
 export async function getPartiesWithGuestCount(): Promise<PartyWithGuestCount[]> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data: parties, error: partiesError } = await supabase.from("parties").select("*").order("data")
   if (partiesError) {
     console.error("Erro ao buscar festas:", partiesError)
@@ -54,7 +54,7 @@ export async function getPartiesWithGuestCount(): Promise<PartyWithGuestCount[]>
 
 // Buscar uma festa por ID
 export async function getPartyById(id: string): Promise<Party | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase.from("parties").select("*").eq("id", id).single()
   if (error) {
     console.error("Erro ao buscar festa:", error)
@@ -65,7 +65,7 @@ export async function getPartyById(id: string): Promise<Party | null> {
 
 // Buscar uma festa por link do formulário
 export async function getPartyByLink(link: string): Promise<Party | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase.from("parties").select("*").eq("link_formulario", link).single()
   if (error) {
     console.error("Erro ao buscar festa pelo link:", error)
@@ -78,7 +78,7 @@ export async function getPartyByLink(link: string): Promise<Party | null> {
 export async function createParty(
   party: NewParty,
 ): Promise<{ party: Party | null; parentCredentials: { username: string; password: string } | null }> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
 
   if (!party.link_formulario) {
     party.link_formulario = generateUniqueLink(party.nome_aniversariante, party.theme)
@@ -121,7 +121,7 @@ export async function createParty(
 
 // Atualizar uma festa
 export async function updateParty(id: string, party: Partial<Party>): Promise<Party | null> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase
     .from("parties")
     .update({ ...party, updated_at: new Date().toISOString() })
@@ -138,7 +138,7 @@ export async function updateParty(id: string, party: Partial<Party>): Promise<Pa
 
 // Excluir uma festa
 export async function deleteParty(id: string): Promise<boolean> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { error } = await supabase.from("parties").delete().eq("id", id)
   if (error) {
     console.error("Erro ao excluir festa:", error)
@@ -150,7 +150,7 @@ export async function deleteParty(id: string): Promise<boolean> {
 
 // Buscar festas por salão
 export async function getPartiesByHall(hallId: string): Promise<Party[]> {
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase.from("parties").select("*").eq("party_hall_id", hallId).order("data")
   if (error) {
     console.error("Erro ao buscar festas do salão:", error)
