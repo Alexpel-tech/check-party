@@ -7,8 +7,6 @@ import { generateUniqueLink } from "../utils"
 import { createPartyParent, generateParentUsername, generateRandomPassword } from "./party-parents"
 
 // Retorna o usuário logado ou lança erro se não houver sessão.
-// Usado nas telas administrativas, onde cada dono só pode ver/gerenciar
-// as próprias festas.
 async function getCurrentUserId(supabase: Awaited<ReturnType<typeof createServerClient>>): Promise<string> {
   const {
     data: { user },
@@ -21,6 +19,15 @@ async function getCurrentUserId(supabase: Awaited<ReturnType<typeof createServer
   return user.id
 }
 
+// Verifica se o usuário é Admin Supremo (acesso total, qualquer salão/festa)
+async function checkIsSuperAdmin(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string,
+): Promise<boolean> {
+  const { data } = await supabase.from("super_admins").select("user_id").eq("user_id", userId).single()
+  return !!data
+}
+
 // IDs dos salões que pertencem ao usuário logado
 async function getOwnedHallIds(supabase: Awaited<ReturnType<typeof createServerClient>>, userId: string) {
   const { data, error } = await supabase.from("party_halls").select("id").eq("user_id", userId)
@@ -31,12 +38,16 @@ async function getOwnedHallIds(supabase: Awaited<ReturnType<typeof createServerC
   return (data || []).map((h) => h.id)
 }
 
-// Confirma que o salão informado pertence ao usuário logado
+// Confirma que o salão informado pertence ao usuário logado (Admin Supremo
+// sempre passa nessa checagem, para qualquer salão)
 async function assertOwnsHall(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
   userId: string,
   hallId: string,
 ) {
+  const superAdmin = await checkIsSuperAdmin(supabase, userId)
+  if (superAdmin) return
+
   const { data, error } = await supabase
     .from("party_halls")
     .select("id")
@@ -49,12 +60,23 @@ async function assertOwnsHall(
   }
 }
 
-// Buscar todas as festas do usuário logado (área administrativa)
+// Buscar todas as festas (Admin Supremo vê de todos os salões; dono comum
+// só as dos próprios salões)
 export async function getParties(): Promise<Party[]> {
   const supabase = await createServerClient()
   const userId = await getCurrentUserId(supabase)
-  const hallIds = await getOwnedHallIds(supabase, userId)
+  const superAdmin = await checkIsSuperAdmin(supabase, userId)
 
+  if (superAdmin) {
+    const { data, error } = await supabase.from("parties").select("*").order("data")
+    if (error) {
+      console.error("Erro ao buscar festas:", error)
+      throw new Error("Falha ao buscar festas")
+    }
+    return data || []
+  }
+
+  const hallIds = await getOwnedHallIds(supabase, userId)
   if (hallIds.length === 0) return []
 
   const { data, error } = await supabase.from("parties").select("*").in("party_hall_id", hallIds).order("data")
@@ -65,19 +87,22 @@ export async function getParties(): Promise<Party[]> {
   return data || []
 }
 
-// Buscar festas com contagem de convidados (somente do usuário logado)
+// Buscar festas com contagem de convidados (Admin Supremo vê de todos os
+// salões; dono comum só as dos próprios)
 export async function getPartiesWithGuestCount(): Promise<PartyWithGuestCount[]> {
   const supabase = await createServerClient()
   const userId = await getCurrentUserId(supabase)
-  const hallIds = await getOwnedHallIds(supabase, userId)
+  const superAdmin = await checkIsSuperAdmin(supabase, userId)
 
-  if (hallIds.length === 0) return []
+  let partiesQuery = supabase.from("parties").select("*").order("data")
 
-  const { data: parties, error: partiesError } = await supabase
-    .from("parties")
-    .select("*")
-    .in("party_hall_id", hallIds)
-    .order("data")
+  if (!superAdmin) {
+    const hallIds = await getOwnedHallIds(supabase, userId)
+    if (hallIds.length === 0) return []
+    partiesQuery = partiesQuery.in("party_hall_id", hallIds)
+  }
+
+  const { data: parties, error: partiesError } = await partiesQuery
   if (partiesError) {
     console.error("Erro ao buscar festas:", partiesError)
     throw new Error("Falha ao buscar festas")
@@ -131,7 +156,8 @@ export async function getPartyByLink(link: string): Promise<Party | null> {
   return data
 }
 
-// Criar uma nova festa (o salão informado precisa pertencer ao usuário logado)
+// Criar uma nova festa (o salão informado precisa pertencer ao usuário
+// logado, exceto se for Admin Supremo)
 export async function createParty(
   party: NewParty,
 ): Promise<{ party: Party | null; parentCredentials: { username: string; password: string } | null }> {
@@ -178,19 +204,24 @@ export async function createParty(
   }
 }
 
-// Atualizar uma festa (somente se pertencer a um salão do usuário logado)
+// Atualizar uma festa (Admin Supremo pode editar qualquer uma; dono comum
+// só as dos próprios salões)
 export async function updateParty(id: string, party: Partial<Party>): Promise<Party | null> {
   const supabase = await createServerClient()
   const userId = await getCurrentUserId(supabase)
-  const hallIds = await getOwnedHallIds(supabase, userId)
+  const superAdmin = await checkIsSuperAdmin(supabase, userId)
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("parties")
     .update({ ...party, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .in("party_hall_id", hallIds)
-    .select()
-    .single()
+
+  if (!superAdmin) {
+    const hallIds = await getOwnedHallIds(supabase, userId)
+    query = query.in("party_hall_id", hallIds)
+  }
+
+  const { data, error } = await query.select().single()
   if (error) {
     console.error("Erro ao atualizar festa:", error)
     throw new Error("Falha ao atualizar festa")
@@ -199,13 +230,21 @@ export async function updateParty(id: string, party: Partial<Party>): Promise<Pa
   return data
 }
 
-// Excluir uma festa (somente se pertencer a um salão do usuário logado)
+// Excluir uma festa (Admin Supremo pode excluir qualquer uma; dono comum
+// só as dos próprios salões)
 export async function deleteParty(id: string): Promise<boolean> {
   const supabase = await createServerClient()
   const userId = await getCurrentUserId(supabase)
-  const hallIds = await getOwnedHallIds(supabase, userId)
+  const superAdmin = await checkIsSuperAdmin(supabase, userId)
 
-  const { error } = await supabase.from("parties").delete().eq("id", id).in("party_hall_id", hallIds)
+  let query = supabase.from("parties").delete().eq("id", id)
+
+  if (!superAdmin) {
+    const hallIds = await getOwnedHallIds(supabase, userId)
+    query = query.in("party_hall_id", hallIds)
+  }
+
+  const { error } = await query
   if (error) {
     console.error("Erro ao excluir festa:", error)
     throw new Error("Falha ao excluir festa")

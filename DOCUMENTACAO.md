@@ -10,10 +10,11 @@
 6. [Banco de Dados](#banco-de-dados)
 7. [APIs e Serviços](#apis-e-serviços)
 8. [Integrações](#integrações)
-9. [Fluxos de Usuário](#fluxos-de-usuário)
-10. [Testes](#testes)
-11. [Segurança](#segurança)
-12. [Deploy](#deploy)
+9. [JWT (QR Code)](#jwt-qr-code)
+10. [Fluxos de Usuário](#fluxos-de-usuário)
+11. [Testes](#testes)
+12. [Segurança](#segurança)
+13. [Deploy](#deploy)
 
 ---
 
@@ -649,199 +650,249 @@ Tokens JWT são gerados automaticamente pelo sistema de QR Code para garantir se
 
 ---
 
+## 🔐 JWT (QR Code)
+
+Tokens JWT identificam e validam convidados no momento do check-in.
+Implementação real em `lib/utils/qr-code.ts`.
+
+### Payload gerado (função `generateQRToken`)
+
+```json
+{
+  "guestId": "uuid",
+  "partyId": "uuid",
+  "timestamp": 1713214800000,
+  "exp": 1713301200,
+  "iat": 1713214800
+}
+```
+
+`exp` é calculado como `agora + 24 horas`. `iat` é adicionado automaticamente
+pela biblioteca `jsonwebtoken`. O token é assinado com `HS256` usando
+`JWT_SECRET`.
+
+### Fluxo real
+
+1. **Geração**: `generateCheckInQRCode(guestId, partyId)` cria o token,
+   monta a URL `.../check-in/<token>` e gera a imagem do QR Code
+   (`QRCode.toDataURL`, biblioteca `qrcode`).
+2. **Validação**: `validateQRToken(token)` verifica assinatura e expiração
+   (`jwt.verify`), depois confirma que o convidado existe no banco.
+3. **Check-in**: `registerCheckIn(token)` marca o convidado, mas atenção —
+   veja o bug abaixo.
+
+### ⚠️ Bugs conhecidos, ainda não corrigidos
+
+- `registerCheckIn` tenta atualizar uma coluna `status` na tabela `guests`
+  que **não existe** (a coluna real é `status_confirmacao`). Isso faz o
+  check-in real falhar hoje.
+- `getQRCodeHistory` seleciona `guests(name, email, phone)` e
+  `parties(name, date)`, mas os nomes reais das colunas são
+  `nome_principal`/`whatsapp` (guests) e `nome_aniversariante`/`data`
+  (parties). Essa consulta também falha do jeito que está.
+- Esse módulo (`lib/utils/qr-code.ts`) importa o cliente Supabase do
+  **navegador** (`@/lib/supabase/client`), mesmo sendo usado por rotas de
+  API que rodam no servidor — funciona porque a chave usada é a mesma
+  (anon key), mas não é o padrão correto do projeto.
+
+Nenhuma dessas correções foi feita ainda — fica registrado aqui para não
+serem esquecidas.
+
+### Segurança do token
+
+- Expira em 24 horas
+- Assinado com `JWT_SECRET` (variável de ambiente)
+- Não guarda dados sensíveis, só os IDs
+- Se `JWT_SECRET` não estiver configurado, o código usa
+  `"fallback-secret-key"` como segredo — **isso é inseguro** e só não é um
+  problema hoje porque `JWT_SECRET` está de fato configurado na Vercel.
+
+
+
 ## 👥 Fluxos de Usuário
 
-### Fluxo do Salão de Festa
+### Hierarquia de acesso
+
+```
+Admin Supremo (alexpelgr@gmail.com)
+   └── vê e gerencia TODOS os salões e festas do sistema
+       │
+Dono de Salão de Festas (qualquer conta criada em /admin/register)
+   └── vê e gerencia somente os próprios salões e festas
+       │
+Pais/Responsáveis (login próprio, entregue pelo salão)
+   └── gerenciam somente a festa específica que receberam
+       │
+Convidados (acesso por link público, sem login)
+   └── confirmam presença e recebem QR Code da própria festa
+```
+
+O Admin Supremo é controlado pela tabela `super_admins` no banco (não é um
+campo de perfil nem um checkbox na interface). Hoje só a conta
+`alexpelgr@gmail.com` está cadastrada nela. Adicionar outra conta exige
+inserir o `user_id` dela diretamente no banco.
+
+### Fluxo do Admin Supremo
+
+1. Faz login normalmente em `/admin/login` (é uma conta comum do Supabase
+   Auth, só que marcada como supremo no banco)
+2. Em qualquer tela que hoje lista "meus salões" ou "minhas festas", vê
+   os de **todos** os donos, não só os próprios
+3. Pode criar, editar e excluir salão ou festa de **qualquer** dono
+4. Usado para destravar problemas específicos de um cliente sem precisar
+   da senha dele
+
+### Fluxo do Dono de Salão de Festa
 
 1. **Cadastro**
    - Acessa `/admin/register`
-   - Preenche dados do salão
    - Cria conta com Supabase Auth
-
-2. **Criar Festa**
+2. **Cadastrar Salão**
+   - Acessa `/admin/party-halls/new`
+   - Preenche dados do salão (esse salão passa a pertencer só a ele)
+3. **Criar Festa**
    - Acessa `/admin/parties/new`
-   - Preenche informações da festa
-   - Sistema gera link único
-   - Cria credenciais para os pais
-
-3. **Gerenciar Convidados**
-   - Visualiza dashboard em `/admin/dashboard`
+   - Só pode escolher entre os próprios salões
+   - Sistema gera link único e cria credenciais para os pais
+4. **Gerenciar Convidados**
+   - Visualiza dashboard em `/admin/dashboard` (só vê as próprias festas)
    - Acompanha confirmações em tempo real
-   - Aprova/rejeita convidados
-
-4. **Comunicação**
+5. **Comunicação**
    - Envia SMS/WhatsApp em massa
    - Configura lembretes automáticos
-   - Visualiza histórico de mensagens
-
-5. **Check-in no Dia**
-   - Acessa `/admin/check-in`
+6. **Check-in no Dia**
+   - Acessa `/check-in/[token]` (não `/admin/check-in`, que não existe)
    - Escaneia QR Codes dos convidados
-   - Registra entrada automaticamente
+   - ⚠️ Hoje esse passo tem bugs de nome de coluna não corrigidos —
+     ver seção "JWT (QR Code)" acima
 
 ### Fluxo dos Pais
 
 1. **Receber Credenciais**
-   - Salão fornece username e senha
-   - Informações enviadas por SMS/WhatsApp
-
+   - Salão fornece username e senha, gerados automaticamente na criação
+     da festa
 2. **Login**
-   - Acessa `/pais/login`
-   - Insere credenciais
-   - Acessa dashboard
-
+   - Acessa `/pais/login` — login próprio (tabela `party_parents`, senha
+     em bcrypt), não é Supabase Auth
 3. **Aprovar Convidados**
-   - Visualiza lista de confirmações
-   - Aprova convidados conhecidos
-   - Rejeita convidados não autorizados
-   - Adiciona observações
-
+   - Visualiza lista de confirmações da própria festa
+   - Aprova/rejeita convidados, adiciona observações
 4. **Acompanhamento**
-   - Recebe notificações de novas confirmações
-   - Vê estatísticas em tempo real
-   - Monitora capacidade da festa
+   - Vê estatísticas da própria festa em tempo real
 
 ### Fluxo do Convidado
 
 1. **Receber Convite**
-   - Recebe link por SMS/WhatsApp
-   - Link formato: `https://checkparty.com/guest/festa-pedro-2025`
-
+   - Recebe o link único da festa (gerado em `link_formulario`) por
+     SMS/WhatsApp
 2. **Acessar Formulário**
-   - Clica no link
-   - Vê informações da festa
-   - Preenche formulário
-
+   - Abre `/guest/[link]`, vê informações da festa, preenche o formulário
 3. **Confirmar Presença**
-   - Informa nome completo
-   - Indica número de acompanhantes
-   - Adiciona observações (opcional)
-   - Submete confirmação
-
+   - Informa nome, quantidade de adultos/crianças, observações
 4. **Confirmação**
-   - Recebe mensagem de confirmação
    - Aguarda aprovação dos pais
-   - Recebe confirmação final
-
 5. **Dia da Festa**
-   - Apresenta QR Code na entrada
-   - Check-in registrado automaticamente
-
----
+   - Apresenta o QR Code na entrada (sujeito ao bug de check-in citado
+     acima)
 
 ## 🧪 Testes
 
+### O que existe de verdade hoje
+
+Não há framework de testes automatizados instalado no projeto (sem Jest,
+Playwright, ou k6 no `package.json`). O que existe são scripts internos
+de diagnóstico, chamados manualmente:
+
 ### Centro de Testes (`/admin/test-center`)
 
-Interface visual para testar todos os serviços:
+Interface visual para testar os serviços:
 
-1. **Teste de Banco de Dados**
-   - Conexão com Supabase
-   - Estrutura de tabelas
-   - Autenticação
-
-2. **Teste de SMS**
-   - Configuração Twilio
-   - Envio de mensagem teste
-   - Histórico de mensagens
-
-3. **Teste de WhatsApp**
-   - Configuração da API
-   - Envio de mensagem teste
-   - Verificação de status
-
-4. **Teste de QR Code**
-   - Geração de tokens JWT
-   - Validação de tokens
-   - API de check-in
-
-5. **Teste de Notificações**
-   - Criação de notificações
-   - Realtime updates
-   - Contagem não lidas
+1. **Teste de Banco de Dados** — conexão com Supabase
+2. **Teste de SMS** — configuração Twilio, envio de mensagem teste
+3. **Teste de WhatsApp** — configuração da API, envio de mensagem teste
+4. **Teste de QR Code** — geração e validação de tokens JWT
+5. **Teste de Notificações** — criação de notificações, contagem não lidas
 
 ### Monitoramento (`/admin/system-status`)
 
-Dashboard em tempo real com:
-- Status de todos os serviços
-- Tempo de resposta
-- Saúde geral do sistema (0-100%)
-- Alertas automáticos
-- Refresh a cada 30 segundos
+Dashboard com status dos serviços e saúde geral do sistema.
 
-### Testes Programáticos
+### Scripts programáticos (chamados manualmente, não são uma suíte automatizada)
 
 ```typescript
-// Executar todos os testes de banco
 import { runAllDatabaseTests } from '@/lib/tests/database-test'
-const results = await runAllDatabaseTests()
-
-// Executar testes de SMS
 import { runAllSMSTests } from '@/lib/tests/sms-test'
-const results = await runAllSMSTests('+5511999999999')
-
-// Executar testes de WhatsApp
 import { runAllWhatsAppTests } from '@/lib/tests/whatsapp-test'
-const results = await runAllWhatsAppTests('+5511999999999')
-
-// Executar testes de QR Code
 import { runAllQRCodeTests } from '@/lib/tests/qr-code-test'
-const results = await runAllQRCodeTests()
-
-// Executar testes de notificações
 import { runAllNotificationTests } from '@/lib/tests/notification-test'
-const results = await runAllNotificationTests()
 ```
 
----
+### Recomendado para o futuro (ainda não implementado)
+
+- **Unitários**: Jest, cobrindo QR Code, JWT, serviços isolados
+- **Integração**: Supabase + Server Actions
+- **End-to-end (E2E)**: Playwright, cobrindo o fluxo completo de confirmação
+- **Carga**: k6, para envio massivo de SMS/WhatsApp
+- **Segurança**: testes de reuso de QR Code
 
 ## 🔒 Segurança
 
 ### Autenticação
 
-- **Salões**: Supabase Auth com email/senha
-- **Pais**: Credenciais personalizadas armazenadas com bcrypt
-- **Convidados**: Acesso por link único (sem autenticação)
+- **Donos de salão / Admin Supremo**: Supabase Auth com email/senha
+- **Pais**: login próprio (tabela `party_parents`), senha com bcrypt —
+  não é Supabase Auth
+- **Convidados**: acesso por link único, sem autenticação
 
-### Autorização
+### Autorização — estado real, tabela por tabela
 
-- **RLS (Row Level Security)**: Políticas no Supabase
-- **Middleware**: Verificação de sessão em rotas protegidas
-- **Server Actions**: Validação de permissões em cada ação
+| Tabela | RLS hoje |
+|---|---|
+| `party_halls` | ✅ Restrita por dono (`auth.uid()`), exceto leitura pública e bypass do Admin Supremo |
+| `parties` | ✅ Leitura pública (necessária para o link do convidado); escrita restrita a dono do salão ou Admin Supremo |
+| `super_admins` | ✅ Cada um só lê a própria linha |
+| `guests`, `qr_codes`, `sms_history`, `whatsapp_history`, `reminder_configs`, `reminder_jobs`, `table_layouts`, `table_assignments`, `notifications`, `party_parents` | ⚠️ Ainda com política "libera tudo" — qualquer requisição com a anon key lê/escreve. O isolamento nessas tabelas hoje depende só do código das Server Actions, não do banco |
+
+- **Middleware**: verifica sessão do Supabase Auth em rotas `/admin/*`
+- **Server Actions**: cada ação de salão/festa valida o dono antes de
+  ler/escrever (ver seção "Fluxos de Usuário")
 
 ### Proteção de Dados
 
-- **Variáveis de Ambiente**: Nunca commitadas no Git
-- **JWT**: Tokens assinados com secret para QR Codes
-- **HTTPS**: Obrigatório em produção
-- **CORS**: Configurado apenas para domínios autorizados
+- **Variáveis de Ambiente**: nunca commitadas no Git (`.env*` no
+  `.gitignore`)
+- **JWT**: tokens assinados com `JWT_SECRET` para QR Codes — mas o código
+  cai para um segredo fixo (`"fallback-secret-key"`) se a variável não
+  estiver definida; hoje não é um problema porque `JWT_SECRET` está
+  configurado, mas é um ponto de atenção
+- **HTTPS**: garantido pela Vercel em produção
+- **CORS**: não há configuração customizada de CORS no projeto — usa o
+  comportamento padrão do Next.js/Vercel
 
 ### Validação
 
-- **Input Sanitization**: Todos os inputs são validados
-- **SQL Injection**: Prevenido por Supabase prepared statements
-- **XSS**: React escapa automaticamente strings
+- **React**: escapa strings automaticamente (proteção básica contra XSS)
+- **SQL Injection**: mitigado pelo uso do cliente Supabase/PostgREST
+  (sem SQL bruto concatenado no código)
+- Não há uma camada dedicada de sanitização de input além da validação
+  nativa dos formulários (`required`, `type="email"` etc.)
 
----
+### O que NÃO existe (apesar de já ter sido mencionado em versões antigas desta documentação)
+
+- Rate limiting nos endpoints
+- CSRF automático "do Next.js" como recurso pronto — Server Actions têm
+  proteções do framework, mas não é uma camada de CSRF configurada à parte
+  neste projeto
 
 ## 🚀 Deploy
 
-### Vercel (Recomendado)
+### Processo real usado (GitHub + Vercel + Supabase)
 
-1. **Conectar Repositório**
-   ```bash
-   vercel --prod
-   ```
-
-2. **Configurar Variáveis**
-   - Acesse projeto na Vercel
-   - Settings → Environment Variables
-   - Adicione todas as variáveis necessárias
-
-3. **Deploy Automático**
-   - Push para branch `main`
-   - Deploy automático executado
-   - Preview branches para PRs
+1. Criar projeto no Supabase, rodar `supabase/schema.sql` no SQL Editor
+2. Criar repositório no GitHub e subir o código (`git push`)
+3. Importar o repositório na Vercel
+4. Configurar as variáveis de ambiente (ver abaixo) antes do primeiro deploy
+5. Deploy — a Vercel builda e publica automaticamente a cada push em `main`
 
 ### Variáveis de Ambiente Necessárias
 
@@ -849,7 +900,6 @@ const results = await runAllNotificationTests()
 # Supabase (Obrigatório)
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
 
 # JWT (Obrigatório)
 JWT_SECRET=
@@ -864,15 +914,24 @@ WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_ACCESS_TOKEN=
 ```
 
+> Não existe `SUPABASE_SERVICE_ROLE_KEY` neste projeto — só a chave anon
+> pública é usada, tanto no navegador quanto nas Server Actions. Isso é
+> relevante para entender por que o isolamento de dados depende também
+> do código das actions, não só de RLS (ver seção Segurança).
+
 ### Checklist de Deploy
 
-- [ ] Variáveis de ambiente configuradas
-- [ ] Banco de dados Supabase criado e migrado
-- [ ] RLS policies habilitadas
+- [x] Variáveis de ambiente configuradas na Vercel
+- [x] Banco de dados Supabase criado e com `schema.sql` aplicado
+- [x] RLS habilitado em todas as tabelas (mas só `party_halls`, `parties`
+      e `super_admins` têm políticas reais de dono — o restante ainda é
+      "libera tudo", ver seção Segurança)
 - [ ] Domínio personalizado configurado (opcional)
-- [ ] SSL/HTTPS ativo
-- [ ] Testes executados em produção
-- [ ] Monitoramento ativo
+- [x] SSL/HTTPS ativo (automático na Vercel)
+- [ ] Testes executados em produção (não há suíte automatizada — ver
+      seção Testes)
+- [ ] Monitoramento ativo (a tela `/admin/system-status` existe, mas não
+      há alerta externo configurado)
 
 ---
 
