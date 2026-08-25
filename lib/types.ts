@@ -1,14 +1,26 @@
 export interface PartyHall {
   id: string
   name: string
-  email: string
+  email?: string
   phone?: string
   address?: string
   capacity?: number
+  cnpj?: string
+  idade_maxima_crianca?: number
+  endereco?: string
+  cidade?: string
+  estado?: string
+  cep?: string
+  responsavel?: string
+  telefone?: string
   created_at: string
   updated_at: string
   user_id: string // ID do usuário proprietário do salão
 }
+
+// Campos que o formulário de criação envia. O user_id (dono) é sempre
+// definido no servidor a partir da sessão logada, nunca pelo cliente.
+export type NewPartyHall = Omit<PartyHall, "id" | "created_at" | "updated_at" | "user_id">
 
 export interface Party {
   id: string

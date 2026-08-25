@@ -6,10 +6,58 @@ import { revalidatePath } from "next/cache"
 import { generateUniqueLink } from "../utils"
 import { createPartyParent, generateParentUsername, generateRandomPassword } from "./party-parents"
 
-// Buscar todas as festas
+// Retorna o usuário logado ou lança erro se não houver sessão.
+// Usado nas telas administrativas, onde cada dono só pode ver/gerenciar
+// as próprias festas.
+async function getCurrentUserId(supabase: Awaited<ReturnType<typeof createServerClient>>): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error("Usuário não autenticado")
+  }
+
+  return user.id
+}
+
+// IDs dos salões que pertencem ao usuário logado
+async function getOwnedHallIds(supabase: Awaited<ReturnType<typeof createServerClient>>, userId: string) {
+  const { data, error } = await supabase.from("party_halls").select("id").eq("user_id", userId)
+  if (error) {
+    console.error("Erro ao buscar salões do usuário:", error)
+    throw new Error("Falha ao buscar salões do usuário")
+  }
+  return (data || []).map((h) => h.id)
+}
+
+// Confirma que o salão informado pertence ao usuário logado
+async function assertOwnsHall(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string,
+  hallId: string,
+) {
+  const { data, error } = await supabase
+    .from("party_halls")
+    .select("id")
+    .eq("id", hallId)
+    .eq("user_id", userId)
+    .single()
+
+  if (error || !data) {
+    throw new Error("Salão não encontrado ou não pertence ao usuário logado")
+  }
+}
+
+// Buscar todas as festas do usuário logado (área administrativa)
 export async function getParties(): Promise<Party[]> {
   const supabase = await createServerClient()
-  const { data, error } = await supabase.from("parties").select("*").order("data")
+  const userId = await getCurrentUserId(supabase)
+  const hallIds = await getOwnedHallIds(supabase, userId)
+
+  if (hallIds.length === 0) return []
+
+  const { data, error } = await supabase.from("parties").select("*").in("party_hall_id", hallIds).order("data")
   if (error) {
     console.error("Erro ao buscar festas:", error)
     throw new Error("Falha ao buscar festas")
@@ -17,10 +65,19 @@ export async function getParties(): Promise<Party[]> {
   return data || []
 }
 
-// Buscar festas com contagem de convidados
+// Buscar festas com contagem de convidados (somente do usuário logado)
 export async function getPartiesWithGuestCount(): Promise<PartyWithGuestCount[]> {
   const supabase = await createServerClient()
-  const { data: parties, error: partiesError } = await supabase.from("parties").select("*").order("data")
+  const userId = await getCurrentUserId(supabase)
+  const hallIds = await getOwnedHallIds(supabase, userId)
+
+  if (hallIds.length === 0) return []
+
+  const { data: parties, error: partiesError } = await supabase
+    .from("parties")
+    .select("*")
+    .in("party_hall_id", hallIds)
+    .order("data")
   if (partiesError) {
     console.error("Erro ao buscar festas:", partiesError)
     throw new Error("Falha ao buscar festas")
@@ -52,7 +109,7 @@ export async function getPartiesWithGuestCount(): Promise<PartyWithGuestCount[]>
   return partiesWithCount
 }
 
-// Buscar uma festa por ID
+// Buscar uma festa por ID (uso público/pais — sem restrição de dono)
 export async function getPartyById(id: string): Promise<Party | null> {
   const supabase = await createServerClient()
   const { data, error } = await supabase.from("parties").select("*").eq("id", id).single()
@@ -63,7 +120,7 @@ export async function getPartyById(id: string): Promise<Party | null> {
   return data
 }
 
-// Buscar uma festa por link do formulário
+// Buscar uma festa por link do formulário (uso público — sem restrição de dono)
 export async function getPartyByLink(link: string): Promise<Party | null> {
   const supabase = await createServerClient()
   const { data, error } = await supabase.from("parties").select("*").eq("link_formulario", link).single()
@@ -74,11 +131,13 @@ export async function getPartyByLink(link: string): Promise<Party | null> {
   return data
 }
 
-// Criar uma nova festa
+// Criar uma nova festa (o salão informado precisa pertencer ao usuário logado)
 export async function createParty(
   party: NewParty,
 ): Promise<{ party: Party | null; parentCredentials: { username: string; password: string } | null }> {
   const supabase = await createServerClient()
+  const userId = await getCurrentUserId(supabase)
+  await assertOwnsHall(supabase, userId, party.party_hall_id)
 
   if (!party.link_formulario) {
     party.link_formulario = generateUniqueLink(party.nome_aniversariante, party.theme)
@@ -119,13 +178,17 @@ export async function createParty(
   }
 }
 
-// Atualizar uma festa
+// Atualizar uma festa (somente se pertencer a um salão do usuário logado)
 export async function updateParty(id: string, party: Partial<Party>): Promise<Party | null> {
   const supabase = await createServerClient()
+  const userId = await getCurrentUserId(supabase)
+  const hallIds = await getOwnedHallIds(supabase, userId)
+
   const { data, error } = await supabase
     .from("parties")
     .update({ ...party, updated_at: new Date().toISOString() })
     .eq("id", id)
+    .in("party_hall_id", hallIds)
     .select()
     .single()
   if (error) {
@@ -136,10 +199,13 @@ export async function updateParty(id: string, party: Partial<Party>): Promise<Pa
   return data
 }
 
-// Excluir uma festa
+// Excluir uma festa (somente se pertencer a um salão do usuário logado)
 export async function deleteParty(id: string): Promise<boolean> {
   const supabase = await createServerClient()
-  const { error } = await supabase.from("parties").delete().eq("id", id)
+  const userId = await getCurrentUserId(supabase)
+  const hallIds = await getOwnedHallIds(supabase, userId)
+
+  const { error } = await supabase.from("parties").delete().eq("id", id).in("party_hall_id", hallIds)
   if (error) {
     console.error("Erro ao excluir festa:", error)
     throw new Error("Falha ao excluir festa")
@@ -148,7 +214,7 @@ export async function deleteParty(id: string): Promise<boolean> {
   return true
 }
 
-// Buscar festas por salão
+// Buscar festas por salão (uso público — página de confirmação do convidado)
 export async function getPartiesByHall(hallId: string): Promise<Party[]> {
   const supabase = await createServerClient()
   const { data, error } = await supabase.from("parties").select("*").eq("party_hall_id", hallId).order("data")

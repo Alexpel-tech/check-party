@@ -16,10 +16,18 @@ create table if not exists party_halls (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
-  email text not null,
+  email text,
   phone text,
   address text,
   capacity integer,
+  cnpj text,
+  idade_maxima_crianca integer default 8,
+  endereco text,
+  cidade text,
+  estado text,
+  cep text,
+  responsavel text,
+  telefone text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -231,9 +239,12 @@ alter publication supabase_realtime add table notifications;
 -- Server Actions (não há uma service_role key configurada). O acesso de
 -- "pais/responsáveis" usa um login próprio via cookie (não é Supabase Auth),
 -- então não dá para restringir essas tabelas por auth.uid() sem reescrever
--- a autenticação. Por isso, as políticas abaixo liberam leitura/escrita para
--- qualquer requisição com a anon key — adequado para um projeto pessoal/uso
--- familiar, mas não isole dados sensíveis de terceiros aqui.
+-- a autenticação. party_halls JÁ é restrito por dono (auth.uid()) acima —
+-- cada usuário administrador só cria/edita/exclui os próprios salões. As
+-- demais tabelas abaixo seguem liberadas para qualquer requisição com a
+-- anon key; o isolamento por dono nelas é reforçado na camada de aplicação
+-- (Server Actions), não no banco — adequado para uso pessoal/familiar, mas
+-- não isole dados sensíveis de terceiros aqui sem evoluir também essas políticas.
 
 alter table party_halls enable row level security;
 alter table parties enable row level security;
@@ -248,7 +259,15 @@ alter table table_layouts enable row level security;
 alter table table_assignments enable row level security;
 alter table notifications enable row level security;
 
-create policy "allow all - party_halls" on party_halls for all using (true) with check (true);
+-- party_halls: cada dono só cria/edita/exclui os próprios salões.
+-- A LEITURA fica liberada para todos (inclusive sem login), pois a
+-- página pública de confirmação do convidado precisa listar salões
+-- para o visitante localizar a festa.
+create policy "party_halls_select_own_or_public" on party_halls for select using (true);
+create policy "party_halls_insert_own" on party_halls for insert with check (auth.uid() = user_id);
+create policy "party_halls_update_own" on party_halls for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "party_halls_delete_own" on party_halls for delete using (auth.uid() = user_id);
+
 create policy "allow all - parties" on parties for all using (true) with check (true);
 create policy "allow all - party_parents" on party_parents for all using (true) with check (true);
 create policy "allow all - guests" on guests for all using (true) with check (true);

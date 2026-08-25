@@ -47,13 +47,19 @@ export default function NewPartyHall() {
     setIsSubmitting(true)
 
     try {
-      // Extrair apenas os campos necessários para o NewPartyHall
+      // Envia todos os campos preenchidos no formulário. O dono (user_id) é
+      // definido automaticamente no servidor a partir da sessão logada.
       const newPartyHall: NewPartyHall = {
         name: formData.name,
         idade_maxima_crianca: formData.idade_maxima_crianca,
-        administrator_id: "00000000-0000-0000-0000-000000000000", // ID temporário
-        // Em uma implementação real, armazenaríamos os dados adicionais em uma tabela separada
-        // ou em um campo JSON na tabela party_halls
+        cnpj: formData.cnpj,
+        endereco: formData.endereco,
+        cidade: formData.cidade,
+        estado: formData.estado,
+        cep: formData.cep,
+        responsavel: formData.responsavel,
+        telefone: formData.telefone,
+        email: formData.email,
       }
 
       await createPartyHall(newPartyHall)
