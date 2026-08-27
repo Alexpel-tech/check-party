@@ -33,9 +33,9 @@ export function GuestList({ guests, onAddGuest, partyId }) {
     } else {
       const filtered = guests.filter(
         (guest) =>
-          guest.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          guest.nome_principal?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (guest.email && guest.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (guest.phone && guest.phone.toLowerCase().includes(searchTerm.toLowerCase())),
+          (guest.whatsapp && guest.whatsapp.toLowerCase().includes(searchTerm.toLowerCase())),
       )
       setFilteredGuests(filtered)
     }
@@ -74,10 +74,12 @@ export function GuestList({ guests, onAddGuest, partyId }) {
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case "confirmed":
+      case "confirmado":
         return <Badge className="bg-green-500">Confirmado</Badge>
-      case "declined":
+      case "recusado":
         return <Badge variant="destructive">Recusado</Badge>
+      case "talvez":
+        return <Badge variant="secondary">Talvez</Badge>
       default:
         return <Badge variant="outline">Pendente</Badge>
     }
@@ -124,8 +126,8 @@ export function GuestList({ guests, onAddGuest, partyId }) {
             <CardHeader className="pb-2">
               <div className="flex justify-between items-start">
                 <div>
-                  <CardTitle className="text-base">{guest.name}</CardTitle>
-                  <CardDescription>{getStatusBadge(guest.status)}</CardDescription>
+                  <CardTitle className="text-base">{guest.nome_principal}</CardTitle>
+                  <CardDescription>{getStatusBadge(guest.status_confirmacao)}</CardDescription>
                 </div>
                 <Button
                   variant="ghost"
@@ -145,19 +147,19 @@ export function GuestList({ guests, onAddGuest, partyId }) {
                     <span>{guest.email}</span>
                   </div>
                 )}
-                {guest.phone && (
+                {guest.whatsapp && (
                   <div className="flex items-center">
                     <Phone className="mr-2 h-4 w-4 text-muted-foreground" />
-                    <span>{guest.phone}</span>
+                    <span>{guest.whatsapp}</span>
                   </div>
                 )}
                 <div className="flex items-center mt-2">
-                  {guest.status === "confirmed" ? (
+                  {guest.status_confirmacao === "confirmado" ? (
                     <div className="flex items-center text-green-500">
                       <Check className="mr-1 h-4 w-4" />
                       <span>Confirmado</span>
                     </div>
-                  ) : guest.status === "declined" ? (
+                  ) : guest.status_confirmacao === "recusado" ? (
                     <div className="flex items-center text-destructive">
                       <X className="mr-1 h-4 w-4" />
                       <span>Recusado</span>
@@ -177,7 +179,8 @@ export function GuestList({ guests, onAddGuest, partyId }) {
           <DialogHeader>
             <DialogTitle>Confirmar exclusão</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja excluir o convidado "{guestToDelete?.name}"? Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir o convidado "{guestToDelete?.nome_principal}"? Esta ação não pode ser
+              desfeita.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

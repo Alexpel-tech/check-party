@@ -58,6 +58,24 @@ export async function updateReminderConfig(id: string, config: Partial<ReminderC
   }
 }
 
+export async function deleteReminderConfig(id: string) {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    const { error } = await supabase.from("reminder_configs").delete().eq("id", id)
+
+    if (error) throw error
+
+    return { success: true }
+  } catch (error) {
+    console.error("Erro ao excluir configuração de lembrete:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
+  }
+}
+
 export async function getReminderConfigs(partyId?: string) {
   try {
     const supabase = await createServerSupabaseClient()
@@ -190,7 +208,7 @@ export async function processPendingReminders() {
     if (jobError) throw jobError
 
     if (!jobs || jobs.length === 0) {
-      return { success: true, message: "Nenhum lembrete pendente" }
+      return { success: true, message: "Nenhum lembrete pendente", sent: 0, failed: 0 }
     }
 
     let sentCount = 0
@@ -252,6 +270,8 @@ export async function processPendingReminders() {
     return {
       success: true,
       message: `Processados ${jobs.length} lembretes: ${sentCount} enviados, ${failedCount} falharam`,
+      sent: sentCount,
+      failed: failedCount,
     }
   } catch (error) {
     console.error("Erro ao processar lembretes:", error)

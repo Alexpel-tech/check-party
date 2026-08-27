@@ -37,7 +37,7 @@ export default function NewParty() {
     data: "",
     horario: "",
     local_detalhado: "",
-    link_formulario: null,
+    link_confirmacao: null,
     campos_adicionais_formulario: null,
   })
 

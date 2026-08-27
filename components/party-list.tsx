@@ -33,8 +33,8 @@ export function PartyList({ parties, showActions = true }) {
     } else {
       const filtered = parties.filter(
         (party) =>
-          party.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          party.location.toLowerCase().includes(searchTerm.toLowerCase()),
+          party.nome_aniversariante?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          party.local_detalhado?.toLowerCase().includes(searchTerm.toLowerCase()),
       )
       setFilteredParties(filtered)
     }
@@ -72,6 +72,7 @@ export function PartyList({ parties, showActions = true }) {
   }
 
   const formatDate = (dateString) => {
+    if (!dateString) return ""
     const date = new Date(dateString)
     return format(date, "PPP", { locale: ptBR })
   }
@@ -111,26 +112,28 @@ export function PartyList({ parties, showActions = true }) {
         {filteredParties.map((party) => (
           <Card key={party.id} className="overflow-hidden">
             <CardHeader className="pb-3">
-              <CardTitle>{party.name}</CardTitle>
-              <CardDescription>{party.party_hall_name || "Salão não especificado"}</CardDescription>
+              <CardTitle>{party.nome_aniversariante}</CardTitle>
+              <CardDescription>{party.theme || "Sem tema definido"}</CardDescription>
             </CardHeader>
             <CardContent className="pb-3">
               <div className="space-y-2 text-sm">
                 <div className="flex items-center">
                   <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <span>{formatDate(party.date)}</span>
+                  <span>{formatDate(party.data)}</span>
                 </div>
                 <div className="flex items-center">
                   <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <span>{formatTime(party.time)}</span>
+                  <span>{formatTime(party.horario)}</span>
                 </div>
                 <div className="flex items-center">
                   <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <span>{party.location}</span>
+                  <span>{party.local_detalhado || "Local não informado"}</span>
                 </div>
                 <div className="flex items-center">
                   <Users className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <span>{party.guest_count || 0} convidados</span>
+                  <span>
+                    {party.confirmados ?? 0}/{party.total_convidados ?? 0} confirmados
+                  </span>
                 </div>
               </div>
             </CardContent>
@@ -157,7 +160,8 @@ export function PartyList({ parties, showActions = true }) {
           <DialogHeader>
             <DialogTitle>Confirmar exclusão</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja excluir a festa "{partyToDelete?.name}"? Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir a festa "{partyToDelete?.nome_aniversariante}"? Esta ação não pode ser
+              desfeita.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

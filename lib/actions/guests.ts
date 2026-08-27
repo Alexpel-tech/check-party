@@ -111,19 +111,19 @@ export async function updateFinalConfirmation(id: string, status: boolean): Prom
 
   if (guestData && status) {
     const party = guestData.parties as Party
-    if (party && party.party_parents_id) {
+    if (party && party.party_hall_id) {
       try {
-        const { data: parentUser, error: parentError } = await supabase
-          .from("party_parents")
+        const { data: hall, error: hallError } = await supabase
+          .from("party_halls")
           .select("user_id")
-          .eq("id", party.party_parents_id)
+          .eq("id", party.party_hall_id)
           .single()
 
-        if (parentError || !parentUser?.user_id) {
-          console.error("Erro ao buscar organizador para notificação de confirmação:", parentError)
+        if (hallError || !hall?.user_id) {
+          console.error("Erro ao buscar dono do salão para notificação de confirmação:", hallError)
         } else {
           await NotificationService.createNotification({
-            user_id: parentUser.user_id,
+            user_id: hall.user_id,
             title: "Nova Confirmação de Presença!",
             message: `${guestData.nome_principal} confirmou presença na festa de ${party.nome_aniversariante}.`,
             type: "success",

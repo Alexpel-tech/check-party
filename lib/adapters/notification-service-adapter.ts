@@ -14,13 +14,11 @@ import {
 
 // Adapter functions for client components
 export async function createNotificationAdapter(notification: {
-  userId: string
+  user_id: string
   title: string
   message: string
   type: "info" | "success" | "warning" | "error"
-  partyId?: string
-  guestId?: string
-  actionUrl?: string
+  link?: string
 }) {
   return await createNotification(notification)
 }

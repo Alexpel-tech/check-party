@@ -148,7 +148,7 @@ export async function getPartyById(id: string): Promise<Party | null> {
 // Buscar uma festa por link do formulário (uso público — sem restrição de dono)
 export async function getPartyByLink(link: string): Promise<Party | null> {
   const supabase = await createServerClient()
-  const { data, error } = await supabase.from("parties").select("*").eq("link_formulario", link).single()
+  const { data, error } = await supabase.from("parties").select("*").eq("link_confirmacao", link).single()
   if (error) {
     console.error("Erro ao buscar festa pelo link:", error)
     return null
@@ -165,8 +165,8 @@ export async function createParty(
   const userId = await getCurrentUserId(supabase)
   await assertOwnsHall(supabase, userId, party.party_hall_id)
 
-  if (!party.link_formulario) {
-    party.link_formulario = generateUniqueLink(party.nome_aniversariante, party.theme)
+  if (!party.link_confirmacao) {
+    party.link_confirmacao = generateUniqueLink(party.nome_aniversariante, party.theme)
   }
 
   const { data, error } = await supabase.from("parties").insert(party).select().single()
@@ -177,8 +177,8 @@ export async function createParty(
   }
 
   // Gerar credenciais para os pais
-  const username = generateParentUsername(party.nome_aniversariante)
-  const password = generateRandomPassword()
+  const username = await generateParentUsername(party.nome_aniversariante)
+  const password = await generateRandomPassword()
 
   try {
     await createPartyParent({

@@ -96,14 +96,19 @@ export default function GuestForm({ params }: { params: { link: string } }) {
     }
 
     try {
-      // Criar novo convidado
+      // Criar novo convidado.
+      // Observação: quantidade_total é uma coluna calculada automaticamente
+      // pelo banco (quantidade_adultos + quantidade_criancas) — não pode
+      // ser enviada no insert. leva_acompanhante é só estado local do
+      // formulário, não existe como coluna.
+      const quantidadeAdultos = Math.max(1, formData.quantidade_total - formData.quantidade_criancas)
+
       const newGuest: NewGuest = {
         party_id: party.id,
         nome_principal: formData.nome_principal,
         email: formData.email,
         whatsapp: formData.whatsapp || null,
-        leva_acompanhante: formData.leva_acompanhante,
-        quantidade_total: formData.quantidade_total,
+        quantidade_adultos: quantidadeAdultos,
         quantidade_criancas: formData.quantidade_criancas,
         status_confirmacao_pais: false,
         status_confirmacao_final: false,

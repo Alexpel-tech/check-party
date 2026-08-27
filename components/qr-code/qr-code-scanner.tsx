@@ -66,7 +66,7 @@ export function QRCodeScanner({ onSuccess }: QRCodeScannerProps) {
       // Validar o token
       const validation = await validateQRToken(token)
 
-      if (!validation.valid || !validation.guest) {
+      if (!validation.success || !validation.data?.guest) {
         setResult({
           success: false,
           message: validation.error || "QR Code inválido",
@@ -74,14 +74,16 @@ export function QRCodeScanner({ onSuccess }: QRCodeScannerProps) {
         return
       }
 
+      const validatedGuest = validation.data.guest
+
       // Registrar o check-in
-      const checkIn = await registerCheckIn(validation.guest.id)
+      const checkIn = await registerCheckIn(token)
 
       if (!checkIn.success) {
         setResult({
           success: false,
           message: checkIn.error || "Erro ao registrar check-in",
-          guestData: validation.guest,
+          guestData: validatedGuest,
         })
         return
       }
@@ -90,12 +92,12 @@ export function QRCodeScanner({ onSuccess }: QRCodeScannerProps) {
       setResult({
         success: true,
         message: "Check-in realizado com sucesso!",
-        guestData: validation.guest,
+        guestData: validatedGuest,
       })
 
       // Chamar callback de sucesso se fornecido
       if (onSuccess) {
-        onSuccess(validation.guest)
+        onSuccess(validatedGuest)
       }
     } catch (error) {
       console.error("Erro ao processar QR Code:", error)

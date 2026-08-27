@@ -50,12 +50,24 @@ export interface Guest {
   quantidade_total: number // Calculado (adultos + crianças)
   status_confirmacao: "pendente" | "confirmado" | "recusado" | "talvez"
   status_confirmacao_final?: boolean // True se confirmado, False se recusado, Null se pendente/talvez
+  status_confirmacao_pais?: boolean
   observacao?: string
+  data_envio_formulario?: string
   created_at: string
   updated_at: string
   check_in_at?: string // Data e hora do check-in
+  checked_in?: boolean
+  checked_in_at?: string
   qr_code_token?: string // Token individual do QR Code do convidado
 }
+
+// Campos que o formulário de confirmação envia. quantidade_total é
+// calculado automaticamente pelo banco (adultos + crianças) e NÃO deve
+// ser enviado no insert.
+export type NewGuest = Omit<
+  Guest,
+  "id" | "quantidade_total" | "status_confirmacao" | "created_at" | "updated_at" | "checked_in" | "checked_in_at"
+>
 
 export interface PartyParent {
   id: string

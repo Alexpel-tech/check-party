@@ -4,18 +4,16 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 
 interface Notification {
   id?: string
-  userId: string
+  user_id: string
   title: string
   message: string
   type: "info" | "success" | "warning" | "error"
   read: boolean
-  createdAt?: string
-  partyId?: string
-  guestId?: string
-  actionUrl?: string
+  created_at?: string
+  link?: string
 }
 
-export async function createNotification(notification: Omit<Notification, "id" | "createdAt" | "read">) {
+export async function createNotification(notification: Omit<Notification, "id" | "created_at" | "read">) {
   try {
     const supabase = await createServerSupabaseClient()
 
@@ -164,13 +162,11 @@ export async function notifyGuestConfirmation(
   guestId: string,
 ) {
   return createNotification({
-    userId,
+    user_id: userId,
     title: "Nova Confirmação",
     message: `${guestName} confirmou presença na festa "${partyName}"`,
     type: "success",
-    partyId,
-    guestId,
-    actionUrl: `/admin/parties/${partyId}`,
+    link: `/admin/parties/${partyId}`,
   })
 }
 
@@ -182,34 +178,31 @@ export async function notifyGuestDecline(
   guestId: string,
 ) {
   return createNotification({
-    userId,
+    user_id: userId,
     title: "Convidado Declinou",
     message: `${guestName} declinou o convite para a festa "${partyName}"`,
     type: "warning",
-    partyId,
-    guestId,
-    actionUrl: `/admin/parties/${partyId}`,
+    link: `/admin/parties/${partyId}`,
   })
 }
 
 export async function notifyReminderSent(userId: string, count: number, partyName: string, partyId: string) {
   return createNotification({
-    userId,
+    user_id: userId,
     title: "Lembretes Enviados",
     message: `${count} lembretes foram enviados para a festa "${partyName}"`,
     type: "info",
-    partyId,
-    actionUrl: `/admin/parties/${partyId}`,
+    link: `/admin/parties/${partyId}`,
   })
 }
 
 export async function notifyPaymentReceived(userId: string, planName: string, amount: number) {
   return createNotification({
-    userId,
+    user_id: userId,
     title: "Pagamento Recebido",
     message: `Pagamento de R$ ${amount.toFixed(2)} recebido para o plano ${planName}`,
     type: "success",
-    actionUrl: "/admin/settings",
+    link: "/admin/settings",
   })
 }
 

@@ -27,13 +27,13 @@ export default function CheckInPage() {
       try {
         const result = await validateQRToken(token)
 
-        if (!result.valid || !result.guest) {
+        if (!result.success || !result.data?.guest) {
           setError(result.error || "QR Code inválido")
           setIsLoading(false)
           return
         }
 
-        setGuest(result.guest)
+        setGuest(result.data.guest)
         setIsLoading(false)
       } catch (error) {
         console.error("Erro ao validar token:", error)
@@ -51,7 +51,7 @@ export default function CheckInPage() {
     setIsLoading(true)
 
     try {
-      const result = await registerCheckIn(guest.id)
+      const result = await registerCheckIn(token)
 
       if (result.success) {
         setCheckInStatus({

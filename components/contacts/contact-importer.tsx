@@ -75,15 +75,20 @@ export function ContactImporter({ party, onImportComplete }: ContactImporterProp
             const row = data[i]
 
             try {
-              // Mapear campos do CSV para o modelo de convidado
+              // Mapear campos do CSV para o modelo de convidado.
+              // quantidade_total é calculado automaticamente pelo banco
+              // (adultos + crianças) — não deve ser enviado no insert.
+              const quantidadeCriancas = Number.parseInt(row.criancas || row.children || "0") || 0
+              const quantidadeTotalCsv = Number.parseInt(row.quantidade || row.total || "1") || 1
+              const quantidadeAdultos = Math.max(1, quantidadeTotalCsv - quantidadeCriancas)
+
               const newGuest: NewGuest = {
                 party_id: party.id,
                 nome_principal: row.nome || row.name || "",
                 email: row.email || "",
                 whatsapp: row.whatsapp || row.telefone || row.phone || null,
-                leva_acompanhante: row.acompanhante === "sim" || row.acompanhante === "true" || false,
-                quantidade_total: Number.parseInt(row.quantidade || row.total || "1") || 1,
-                quantidade_criancas: Number.parseInt(row.criancas || row.children || "0") || 0,
+                quantidade_adultos: quantidadeAdultos,
+                quantidade_criancas: quantidadeCriancas,
                 status_confirmacao_pais: false,
                 status_confirmacao_final: false,
                 data_envio_formulario: new Date().toISOString(),

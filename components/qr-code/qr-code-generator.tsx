@@ -33,10 +33,13 @@ export function QRCodeGenerator({ guest, party }: QRCodeGeneratorProps) {
     setBaseUrl(window.location.origin)
 
     // Gerar o token para o QR Code
-    const token = generateQRToken(guest.id, party.id)
-    const checkInUrl = `${window.location.origin}/check-in/${token}`
-    setQrValue(checkInUrl)
-    setIsGenerating(false)
+    async function generate() {
+      const token = await generateQRToken(guest.id, party.id)
+      const checkInUrl = `${window.location.origin}/check-in/${token}`
+      setQrValue(checkInUrl)
+      setIsGenerating(false)
+    }
+    generate()
   }, [guest.id, party.id])
 
   // Função para baixar o QR Code como imagem
@@ -70,9 +73,9 @@ export function QRCodeGenerator({ guest, party }: QRCodeGeneratorProps) {
   }
 
   // Função para regenerar o QR Code
-  const regenerateQRCode = () => {
+  const regenerateQRCode = async () => {
     setIsGenerating(true)
-    const token = generateQRToken(guest.id, party.id)
+    const token = await generateQRToken(guest.id, party.id)
     const checkInUrl = `${baseUrl}/check-in/${token}`
     setQrValue(checkInUrl)
     setIsGenerating(false)

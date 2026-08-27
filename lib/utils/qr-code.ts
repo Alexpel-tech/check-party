@@ -86,7 +86,7 @@ export async function registerCheckIn(token: string): Promise<{ success: boolean
     const { error: updateError } = await supabase
       .from("guests")
       .update({
-        status: "confirmed",
+        status_confirmacao: "confirmado",
         checked_in: true,
         checked_in_at: new Date().toISOString(),
       })
@@ -170,8 +170,8 @@ export async function getQRCodeHistory(partyId?: string) {
       .from("qr_codes")
       .select(`
         *,
-        guests(name, email, phone),
-        parties(name, date)
+        guests(nome_principal, email, whatsapp),
+        parties(nome_aniversariante, data)
       `)
       .order("created_at", { ascending: false })
 

@@ -80,8 +80,8 @@ export default function GuestEntryPage() {
   }
 
   const handleProceed = () => {
-    if (matchedParty && matchedParty.link_formulario) {
-      router.push(`/guest/${matchedParty.link_formulario}`)
+    if (matchedParty && matchedParty.link_confirmacao) {
+      router.push(`/guest/${matchedParty.link_confirmacao}`)
     }
   }
 

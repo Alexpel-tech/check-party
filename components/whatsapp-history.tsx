@@ -15,8 +15,12 @@ export function WhatsAppHistory() {
   const loadMessages = async () => {
     setIsLoading(true)
     try {
-      const history = await WhatsAppService.getMessageHistory()
-      setMessages(history)
+      const result = await WhatsAppService.getWhatsAppHistory()
+      if (result.success && result.data) {
+        setMessages(result.data)
+      } else {
+        setMessages([])
+      }
     } catch (error) {
       console.error("Erro ao carregar histórico de mensagens:", error)
     } finally {
@@ -117,7 +121,7 @@ export function WhatsAppHistory() {
                 ) : (
                   messages.map((message) => (
                     <TableRow key={message.id}>
-                      <TableCell className="whitespace-nowrap">{formatDate(message.created_at)}</TableCell>
+                      <TableCell className="whitespace-nowrap">{formatDate(message.sent_at)}</TableCell>
                       <TableCell>{formatPhoneNumber(message.phone_number)}</TableCell>
                       <TableCell>
                         {message.message_type === "template" ? (
@@ -131,7 +135,7 @@ export function WhatsAppHistory() {
                         )}
                       </TableCell>
                       <TableCell className="max-w-xs truncate">
-                        {formatMessageContent(message.message_content)}
+                        {formatMessageContent(message.message)}
                       </TableCell>
                       <TableCell>
                         {message.status === "sent" ? (
