@@ -46,8 +46,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(data.session.user)
         }
       } catch (error) {
+        // Uma falha aqui (ex: instabilidade momentânea de rede, token
+        // expirado) NÃO significa que o Supabase está mal configurado —
+        // apenas que ainda não sabemos se há sessão ativa. Marcar
+        // isConfigured como false aqui bloquearia login/cadastro
+        // permanentemente até a página ser recarregada, mesmo com tudo
+        // configurado corretamente.
         console.error("Erro ao obter sessão:", error)
-        setIsConfigured(false)
       } finally {
         setIsLoading(false)
       }
@@ -71,8 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (error) {
+      // Mesmo raciocínio: erro pontual aqui não é "não configurado".
       console.error("Erro ao configurar listener de autenticação:", error)
-      setIsConfigured(false)
       setIsLoading(false)
     }
 

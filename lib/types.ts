@@ -71,10 +71,8 @@ export type NewGuest = Omit<
 
 export interface PartyParent {
   id: string
-  user_id: string // ID do usuário Supabase Auth
-  name: string
-  email: string // Email do usuário Supabase Auth
-  phone?: string
+  party_id: string
+  username: string
   created_at: string
   updated_at: string
 }

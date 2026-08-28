@@ -39,6 +39,23 @@ export function ContactImporter({ party, onImportComplete }: ContactImporterProp
     const file = event.target.files?.[0]
     if (!file) return
 
+    // Validação do arquivo: só .csv, até 2MB. Evita processar arquivos
+    // enormes ou de tipo inesperado no navegador do usuário.
+    const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 // 2MB
+    const isCsvType = file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv")
+
+    if (!isCsvType) {
+      setError("Arquivo inválido. Envie um arquivo .csv.")
+      event.target.value = ""
+      return
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError("Arquivo muito grande. O limite é 2MB.")
+      event.target.value = ""
+      return
+    }
+
     setIsUploading(true)
     setError("")
     setSuccess("")
@@ -61,6 +78,13 @@ export function ContactImporter({ party, onImportComplete }: ContactImporterProp
 
           if (!Array.isArray(data) || data.length === 0) {
             setError("Nenhum dado encontrado no arquivo CSV")
+            setIsUploading(false)
+            return
+          }
+
+          const MAX_ROWS = 500
+          if (data.length > MAX_ROWS) {
+            setError(`O arquivo tem ${data.length} linhas. O limite por importação é ${MAX_ROWS}.`)
             setIsUploading(false)
             return
           }

@@ -3,6 +3,20 @@
 import { createServerClient } from "../supabase/server"
 import type { PartyHall, NewPartyHall } from "../types"
 import { revalidatePath } from "next/cache"
+import { z } from "zod"
+
+const newPartyHallSchema = z.object({
+  name: z.string().trim().min(2, "Nome muito curto").max(150),
+  idade_maxima_crianca: z.number().int().min(0).max(18).optional(),
+  cnpj: z.string().trim().max(20).optional().nullable(),
+  endereco: z.string().trim().max(200).optional().nullable(),
+  cidade: z.string().trim().max(100).optional().nullable(),
+  estado: z.string().trim().max(2).optional().nullable(),
+  cep: z.string().trim().max(10).optional().nullable(),
+  responsavel: z.string().trim().max(150).optional().nullable(),
+  telefone: z.string().trim().max(20).optional().nullable(),
+  email: z.string().trim().email("E-mail inválido").max(180).optional().nullable().or(z.literal("")),
+})
 
 // Retorna o usuário logado ou lança erro se não houver sessão
 async function getCurrentUserId(supabase: Awaited<ReturnType<typeof createServerClient>>): Promise<string> {
@@ -92,12 +106,18 @@ export async function getPartyHallById(id: string): Promise<PartyHall | null> {
 
 // Criar um novo salão de festa (o dono é sempre o usuário logado, nunca um valor vindo do cliente)
 export async function createPartyHall(partyHall: NewPartyHall): Promise<PartyHall | null> {
+  const parsed = newPartyHallSchema.safeParse(partyHall)
+  if (!parsed.success) {
+    console.error("Dados de salão inválidos:", parsed.error.flatten())
+    throw new Error("Dados inválidos. Confira os campos do salão informados.")
+  }
+
   const supabase = await createServerClient()
   const userId = await getCurrentUserId(supabase)
 
   const { data, error } = await supabase
     .from("party_halls")
-    .insert({ ...partyHall, user_id: userId })
+    .insert({ ...parsed.data, user_id: userId })
     .select()
     .single()
 

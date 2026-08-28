@@ -1,7 +1,34 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { checkRateLimit, getClientIdentifier } from "./lib/rate-limit"
+
+// Rotas sensíveis a proteger contra força bruta/abuso (login, cadastro,
+// recuperação de senha) — só limitamos requisições POST (envio de
+// formulário/Server Action), não GET (carregar a página é inofensivo).
+const RATE_LIMITED_ROUTES: Record<string, { limit: number; windowMs: number }> = {
+  "/admin/login": { limit: 10, windowMs: 60 * 1000 }, // 10 tentativas por minuto
+  "/admin/register": { limit: 5, windowMs: 60 * 1000 },
+  "/admin/forgot-password": { limit: 5, windowMs: 60 * 1000 },
+  "/pais/login": { limit: 10, windowMs: 60 * 1000 },
+}
 
 export async function middleware(request: NextRequest) {
+  // Rate limiting em rotas sensíveis (somente POST — envio de formulário)
+  if (request.method === "POST") {
+    const { pathname } = request.nextUrl
+    const rule = RATE_LIMITED_ROUTES[pathname]
+    if (rule) {
+      const identifier = getClientIdentifier(request)
+      const result = checkRateLimit(`${identifier}:${pathname}`, rule.limit, rule.windowMs)
+      if (!result.success) {
+        return NextResponse.json(
+          { error: "Muitas tentativas. Aguarde um momento antes de tentar novamente." },
+          { status: 429, headers: { "Retry-After": Math.ceil((result.resetAt - Date.now()) / 1000).toString() } },
+        )
+      }
+    }
+  }
+
   // Verificar se as variáveis de ambiente do Supabase estão configuradas
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     console.warn("Supabase environment variables not configured")

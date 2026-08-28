@@ -21,7 +21,7 @@ export async function createPartyParent(
       ...partyParent,
       password: hashedPassword,
     })
-    .select()
+    .select("id, party_id, username, created_at, updated_at")
     .single()
 
   if (error) {
@@ -67,6 +67,7 @@ export async function verifyParentCredentials(credentials: ParentLoginCredential
   cookieStore.set("parent_session", JSON.stringify(session), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
     maxAge: 60 * 60 * 24, // 1 dia
     path: "/",
   })
