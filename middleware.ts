@@ -62,8 +62,12 @@ export async function middleware(request: NextRequest) {
     // Verificar autenticação apenas para rotas protegidas
     const { pathname } = request.nextUrl
 
-    // Rotas que requerem autenticação
-    const protectedRoutes = ["/admin", "/pais"]
+    // Rotas que requerem autenticação via Supabase Auth (admin/salão).
+    // /pais/* usa um sistema de login próprio (cookie "parent_session",
+    // verificado dentro de cada página/action, não aqui) — não deve ser
+    // checado contra supabase.auth.getUser(), que sempre será null para
+    // os pais.
+    const protectedRoutes = ["/admin"]
     const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route))
 
     if (isProtectedRoute) {
@@ -72,19 +76,15 @@ export async function middleware(request: NextRequest) {
       } = await supabase.auth.getUser()
 
       // Permitir acesso às páginas de login/registro mesmo sem autenticação
-      const authPages = ["/admin/login", "/admin/register", "/admin/forgot-password", "/pais/login"]
+      const authPages = ["/admin/login", "/admin/register", "/admin/forgot-password"]
       const isAuthPage = authPages.some((page) => pathname.startsWith(page))
 
       if (!user && !isAuthPage) {
-        // Redirecionar para login baseado no tipo de rota
-        const loginUrl = pathname.startsWith("/admin") ? "/admin/login" : "/pais/login"
-        return NextResponse.redirect(new URL(loginUrl, request.url))
+        return NextResponse.redirect(new URL("/admin/login", request.url))
       }
 
       if (user && isAuthPage) {
-        // Redirecionar usuários autenticados para dashboard
-        const dashboardUrl = pathname.startsWith("/admin") ? "/admin/dashboard" : "/pais/dashboard"
-        return NextResponse.redirect(new URL(dashboardUrl, request.url))
+        return NextResponse.redirect(new URL("/admin/dashboard", request.url))
       }
     }
 

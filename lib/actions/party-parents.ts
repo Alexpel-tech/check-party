@@ -63,7 +63,7 @@ export async function verifyParentCredentials(credentials: ParentLoginCredential
   }
 
   // Armazenar sessão em cookie
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   cookieStore.set("parent_session", JSON.stringify(session), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -77,7 +77,7 @@ export async function verifyParentCredentials(credentials: ParentLoginCredential
 
 // Obter sessão atual dos pais
 export async function getParentSession(): Promise<ParentSession | null> {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const sessionCookie = cookieStore.get("parent_session")
 
   if (!sessionCookie) {
@@ -95,7 +95,7 @@ export async function getParentSession(): Promise<ParentSession | null> {
 
 // Encerrar sessão dos pais
 export async function logoutParent(): Promise<boolean> {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   cookieStore.delete("parent_session")
   return true
 }

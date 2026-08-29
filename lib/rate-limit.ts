@@ -14,17 +14,21 @@
 type Bucket = { count: number; resetAt: number }
 
 const buckets = new Map<string, Bucket>()
+let lastCleanup = Date.now()
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000
 
-// Limpa entradas antigas periodicamente para não vazar memória
-setInterval(
-  () => {
-    const now = Date.now()
-    for (const [key, bucket] of buckets.entries()) {
-      if (bucket.resetAt < now) buckets.delete(key)
-    }
-  },
-  5 * 60 * 1000,
-)
+// Limpa entradas antigas de forma preguiçosa (a cada chamada, no máximo uma
+// vez a cada 5 minutos) em vez de usar setInterval — setInterval não é uma
+// escolha segura/idiomática dentro do Edge Runtime do middleware, onde cada
+// execução deveria ser uma função de vida curta e sem estado persistente.
+function cleanupIfNeeded() {
+  const now = Date.now()
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return
+  lastCleanup = now
+  for (const [key, bucket] of buckets.entries()) {
+    if (bucket.resetAt < now) buckets.delete(key)
+  }
+}
 
 export interface RateLimitResult {
   success: boolean
@@ -37,6 +41,7 @@ export interface RateLimitResult {
  * (normalmente `${ip}:${rota}`).
  */
 export function checkRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
+  cleanupIfNeeded()
   const now = Date.now()
   const existing = buckets.get(key)
 
